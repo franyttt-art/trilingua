@@ -2547,7 +2547,6 @@ function pcmTono(tipo){
   const sr = 22050;
   const lleno = seg => new Float32Array(Math.ceil(sr * seg));
   const ruido = (() => { let x = 0; return corte => { x += corte * ((Math.random() * 2 - 1) - x); return x; }; })();
-  if (tipo.startsWith("tap:")) return pcmToque(tipo.slice(4), sr, lleno);
   if (tipo === "tos" || tipo === "tosLarga") {
     // Tos de fumador: cada golpe es aire áspero (ruido filtrado en las resonancias de la garganta)
     // con un arranque seco y un poquito de voz grave. La larga es un ataque de tos que se va apagando.
@@ -2588,47 +2587,21 @@ function pcmTono(tipo){
   });
   return {pcm, sr};
 }
-// Sonidos para el toque de botones (se eligen en Perfil).
-const TOQUES = [["duolingo", "🦉 Estilo Duolingo"], ["gota", "💧 Gota"], ["madera", "🪵 Madera"], ["campana", "🔔 Campanita"], ["burbuja", "🫧 Burbuja"], ["tic", "⌨️ Tic"], ["ninguno", "🔇 Ninguno"]];
-function pcmToque(nombre, sr, lleno){
-  let fase = 0;
-  const barrido = (dur, f0, f1, dec, vol, curva = t => t) => { // tono que cambia de f0 a f1
-    const pcm = lleno(dur);
-    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = f0 + (f1 - f0) * Math.min(1, curva(t / dur));
-      fase += f / sr; pcm[k] = Math.sin(2 * Math.PI * fase) * Math.min(1, t / .002) * Math.exp(-t * dec) * vol; }
-    return pcm;
-  };
-  if (nombre === "duolingo") { // «pop» redondo: clic seco + tono que cae rápido (imitación del estilo, sonido propio)
-    const pcm = lleno(.085); let fz = 0;
-    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = 430 + 620 * Math.exp(-t * 90);
-      fz += f / sr;
-      const cuerpo = (Math.sin(2 * Math.PI * fz) + Math.sin(4 * Math.PI * fz) * .18) * Math.min(1, t / .0012) * Math.exp(-t * 48);
-      const clic = t < .004 ? (Math.random() * 2 - 1) * (1 - t / .004) * .35 : 0;
-      pcm[k] = (cuerpo + clic) * .28; }
-    return {pcm, sr};
-  }
-  if (nombre === "gota") return {pcm:barrido(.09, 1400, 600, 38, .2, u => Math.sqrt(u)), sr};
-  if (nombre === "burbuja") return {pcm:barrido(.055, 900, 1800, 70, .2), sr};
-  if (nombre === "campana") {
-    const pcm = lleno(.25);
-    for (let k = 0; k < pcm.length; k++) { const t = k / sr;
-      pcm[k] = (Math.sin(2 * Math.PI * 1760 * t) + Math.sin(2 * Math.PI * 2640 * t) * .35 + Math.sin(2 * Math.PI * 3520 * t) * .12) * Math.min(1, t / .002) * Math.exp(-t * 16) * .07; }
-    return {pcm, sr};
-  }
-  if (nombre === "madera") {
-    const pcm = lleno(.07);
-    for (let k = 0; k < pcm.length; k++) { const t = k / sr;
-      pcm[k] = (Math.sin(2 * Math.PI * 520 * t) * .7 + Math.sin(2 * Math.PI * 1180 * t) * .35 + Math.sin(2 * Math.PI * 2150 * t) * .15) * Math.min(1, t / .0015) * Math.exp(-t * 75) * .26; }
-    return {pcm, sr};
-  }
-  // tic
-  const pcm = lleno(.025);
-  for (let k = 0; k < pcm.length; k++) { const t = k / sr;
-    pcm[k] = (Math.sin(2 * Math.PI * 2400 * t) * .6 + Math.sin(2 * Math.PI * 3600 * t) * .25) * Math.min(1, t / .0008) * Math.exp(-t * 260) * .16; }
-  return {pcm, sr};
+// Sonidos para el toque de botones: grabaciones reales (paquete «Interface Sounds» de Kenney, licencia CC0,
+// convertidas a WAV en la carpeta sonidos/). Se eligen en Perfil.
+const TOQUES = [["pop", "🦉 Pop (estilo Duolingo)"], ["pop2", "🫧 Pop suave"], ["seleccion", "👆 Selección"], ["gota", "💧 Gota"],
+  ["cristal", "🥂 Cristal"], ["interruptor", "🔘 Interruptor"], ["ninguno", "🔇 Ninguno"]];
+const urlToque = nombre => (enMarco ? URL_APP : "") + "sonidos/" + nombre + ".wav";
+const toqueElegido = () => { const t = S.p.toqueTipo || (S.p.toque === false ? "ninguno" : "pop"); return TOQUES.some(([v]) => v === t) ? t : "pop"; };
+// Para la vía rápida, el archivo se decodifica una vez y queda en memoria.
+const cargandoToque = {};
+function cargarToque(c, tipo){
+  if (buffersTono[tipo] || cargandoToque[tipo]) return;
+  cargandoToque[tipo] = fetch(urlToque(tipo.slice(4))).then(r => r.arrayBuffer())
+    .then(b => new Promise((ok, mal) => c.decodeAudioData(b, ok, mal))).then(bf => { buffersTono[tipo] = bf; }).catch(() => {});
 }
-const toqueElegido = () => S.p.toqueTipo || (S.p.toque === false ? "ninguno" : "duolingo");
 function urlTono(tipo){
+  if (tipo.startsWith("tap:")) return urlToque(tipo.slice(4));
   if (urlsTono[tipo]) return urlsTono[tipo];
   const {pcm, sr} = pcmTono(tipo), total = pcm.length;
   const buf = new ArrayBuffer(44 + total * 2), dv = new DataView(buf);
@@ -2668,6 +2641,7 @@ function tono(tipo){
   const c = sonidoRapido() ? despertarSonido() : null;
   if (!c || c.state !== "running") { tocarComoAudio(tipo); return; }
   try {
+    if (tipo.startsWith("tap:") && !buffersTono[tipo]) { cargarToque(c, tipo); tocarComoAudio(tipo); return; }
     if (!buffersTono[tipo]) { const {pcm, sr} = pcmTono(tipo); const bf = c.createBuffer(1, pcm.length, sr); bf.copyToChannel(pcm, 0); buffersTono[tipo] = bf; }
     const src = c.createBufferSource(); src.buffer = buffersTono[tipo]; src.connect(c.destination); src.start(0);
   } catch { tocarComoAudio(tipo); }
@@ -3406,10 +3380,10 @@ aplicar(lsLeer());
 render();
 conectarNube();
 // Precarga: los tonos y la voz de Felipe listos para sonar sin demora.
-setTimeout(() => { for (const tipo of ["ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
+setTimeout(() => { if (toqueElegido() !== "ninguno") { const t = "tap:" + toqueElegido(); poolTono[t] || (poolTono[t] = Array.from({length:3}, () => { const a = new Audio(urlTono(t)); a.preload = "auto"; a.load(); return a; })); } for (const tipo of ["ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927172734";
+const VERSION_APP = "20260927173102";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));

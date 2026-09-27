@@ -1,6 +1,6 @@
-const CACHE = "trilingua-20260927172734";
+const CACHE = "trilingua-20260927173102";
 const AUDIO = "trilingua-audio", FUENTES = "trilingua-fuentes";
-const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
+const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "sonidos/cristal.wav", "sonidos/gota.wav", "sonidos/interruptor.wav", "sonidos/pop.wav", "sonidos/pop2.wav", "sonidos/seleccion.wav"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
   // Los audios y las fuentes se conservan entre versiones (no cambian); solo se renueva el cache de la página.
