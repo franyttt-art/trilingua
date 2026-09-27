@@ -187,7 +187,10 @@ html,body{overscroll-behavior-y:none}
   .card,.opt,.item,.kpi,.bubble,.tok,.line .txt{background:#1E1A34}
   header.top{background:rgba(11,10,26,.94)}
 }
-#stars{height:100vh;height:100lvh}
+#stars{top:0;left:0;right:auto;bottom:auto;width:100vw;height:100vh;height:100lvh;will-change:transform;transform:translateZ(0);contain:strict}
+.envivo{font-weight:800;font-size:18px;padding:10px 12px;border-radius:14px;background:var(--act-soft)}
+.medidor{height:10px;border-radius:6px;background:var(--line);overflow:hidden}
+.medidor i{display:block;height:100%;width:0;background:var(--good);transition:width .08s}
 .micbox{display:flex;flex-direction:column;gap:10px}
 .btn.mic{--c:#2A1F55;--cd:#7C5CFF;--ct:#fff}
 .btn.mic.rec{--c:#B3261E;--cd:#7A120C;animation:latido 1s ease-in-out infinite}
@@ -2182,51 +2185,98 @@ function botonMicrofono(t, l){
   const b = el("button", {class:"btn mic"}, "🎤 Decilo y te corrijo");
   let detener = null;
   const listo = () => { detener = null; b.classList.remove("rec"); b.textContent = "🎤 Probar de nuevo"; };
+  const aviso = txt => salida.replaceChildren(el("div", {class:"tip"}, txt));
+  const MOTIVOS = {"no-speech":"No escuché nada. Hablá más fuerte y más cerca, apenas el botón se ponga rojo.",
+    "audio-capture":"Otra app está usando el micrófono. Cerrala y probá de nuevo.",
+    "network":"El reconocimiento de voz necesita internet. Te grabo para que compares tu voz.",
+    "service-not-allowed":"Tu celular no deja usar el reconocimiento de voz acá. Te grabo para que compares tu voz.",
+    "language-not-supported":"Tu celular no reconoce este idioma. Te grabo para que compares tu voz."};
+
+  function mostrarPuntaje(oidos){
+    const p = puntuarDicho(oidos, t);
+    const msj = p.pct >= 85 ? `✅ ${p.pct}% · ¡Clavado! Felipe tosió de la emoción.` : p.pct >= 60 ? `🟡 ${p.pct}% · Casi. Repasá las palabras en rojo.` : `🔴 ${p.pct}% · Escuchalo lento 🐢 y probá otra vez.`;
+    tono(p.pct >= 85 ? "ok" : "no");
+    salida.replaceChildren(el("div", {class:"card micres"}, el("b", {}, msj),
+      el("div", {class:"frase"}, ...p.palabras.map((w, i) => el("span", {class:p.marcas[i] ? "ok" : "mal"}, w + " "))),
+      el("div", {class:"small muted"}, "Escuché: «" + p.oido + "»")));
+  }
+
+  // Plan A: el reconocimiento de voz del navegador (Chrome, Safari). Muestra en vivo lo que escucha.
+  function reconocer(){
+    const r = new Reconocedor();
+    r.lang = CURSO[l].voz; r.interimResults = true; r.continuous = false; r.maxAlternatives = 4;
+    let finales = [], parcial = "", fallo = null, arranco = Date.now(), recibio = false;
+    const enVivo = el("div", {class:"envivo"}, "🎙️ Hablá ahora…");
+    salida.replaceChildren(enVivo);
+    r.onresult = e => {
+      recibio = true; parcial = "";
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const res = e.results[i];
+        if (res.isFinal) finales = [...res].map(a => a.transcript); else parcial += res[0].transcript;
+      }
+      enVivo.textContent = "🎙️ " + (finales[0] || parcial || "…");
+    };
+    r.onerror = e => { fallo = e.error; };
+    r.onend = () => {
+      clearTimeout(tope);
+      const oidos = finales.length ? finales : parcial ? [parcial] : [];
+      if (oidos.length) { listo(); mostrarPuntaje(oidos); return; }
+      if (fallo === "not-allowed") { listo(); micEstado = "negado"; aviso(textoMicNegado()); return; }
+      // Si el reconocedor no funciona en este celular (o cortó al instante sin oír nada), pasamos a grabar.
+      if (["network", "service-not-allowed", "language-not-supported"].includes(fallo) || (!recibio && Date.now() - arranco < 1200)) {
+        aviso((MOTIVOS[fallo] || "El reconocimiento de voz no respondió en este celular.") + " 🎧");
+        setTimeout(grabar, 900); return;
+      }
+      listo(); aviso("🤷 " + (MOTIVOS[fallo] || "No te escuché. Hablá apenas el botón se ponga rojo.") + (fallo ? ` (${fallo})` : ""));
+    };
+    const tope = setTimeout(() => { try { r.stop(); } catch {} }, Math.min(12000, 4000 + t.length * 120));
+    detener = () => { try { r.stop(); } catch {} };
+    b.textContent = "🔴 Te escucho… (tocá para terminar)";
+    try { r.start(); } catch { setTimeout(grabar, 300); }
+  }
+
+  // Plan B: grabar y comparar tu voz con la original (latín, o celulares sin reconocimiento).
+  async function grabar(){
+    let s; try { s = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true, noiseSuppression:true}}); }
+    catch { micEstado = "negado"; listo(); aviso(textoMicNegado()); return; }
+    if (!window.MediaRecorder) { s.getTracks().forEach(x => x.stop()); listo(); aviso("Este navegador no puede grabar. Probá en Chrome."); return; }
+    // Medidor de volumen: así ves que el micrófono te está tomando.
+    const barra = el("i"), medidor = el("div", {class:"medidor"}, barra);
+    let ctxM = null, anim = 0;
+    try {
+      ctxM = new (window.AudioContext || window.webkitAudioContext)();
+      const an = ctxM.createAnalyser(); an.fftSize = 512; ctxM.createMediaStreamSource(s).connect(an);
+      const datos = new Uint8Array(an.fftSize);
+      const pintar = () => { an.getByteTimeDomainData(datos); let m = 0; for (const v of datos) m = Math.max(m, Math.abs(v - 128));
+        barra.style.width = Math.min(100, m / 64 * 100) + "%"; anim = requestAnimationFrame(pintar); };
+      pintar();
+    } catch {}
+    salida.replaceChildren(el("div", {class:"envivo"}, "🔴 Grabando: decí la frase en voz alta"), medidor);
+    const partes = [], rec = new MediaRecorder(s);
+    rec.ondataavailable = e => { if (e.data.size) partes.push(e.data); };
+    rec.onstop = () => {
+      cancelAnimationFrame(anim); try { ctxM && ctxM.close(); } catch {}
+      s.getTracks().forEach(x => x.stop()); listo();
+      const audio = new Audio(URL.createObjectURL(new Blob(partes, {type:rec.mimeType || "audio/webm"})));
+      salida.replaceChildren(el("div", {class:"card micres"}, el("b", {}, "🎧 Compará tu voz con la original. ¿Suenan parecido?"),
+        el("div", {class:"row", style:"justify-content:center"}, el("button", {class:"btn", onclick:() => { pararAudio(); audio.currentTime = 0; audio.play(); }}, "▶️ Mi voz"), el("button", {class:"btn", onclick:() => decir(t, l)}, "🔊 Original"))));
+      audio.onended = () => { audio.onended = null; decir(t, l); };
+      audio.play().catch(() => {});
+    };
+    const tope = setTimeout(() => rec.state === "recording" && rec.stop(), Math.min(10000, 2500 + t.length * 120));
+    detener = () => { clearTimeout(tope); if (rec.state === "recording") rec.stop(); };
+    b.textContent = "⏹️ Grabando… (tocá para terminar)";
+    rec.start();
+  }
+
   b.onclick = async () => {
     if (detener) { detener(); return; }
-    if (micEstado !== "ok" && !(await pedirMicrofono())) { salida.replaceChildren(el("div", {class:"tip"}, textoMicNegado())); return; }
     pararAudio();
     b.classList.add("rec");
-    // El reconocedor del navegador no sabe latín: ahí grabamos tu voz para que la compares con el original.
-    if (Reconocedor && l !== "la") {
-      const r = new Reconocedor(); r.lang = CURSO[l].voz; r.interimResults = false; r.maxAlternatives = 4;
-      let oidos = [], fallo = null;
-      r.onresult = e => { oidos = [...e.results[0]].map(a => a.transcript); };
-      r.onerror = e => { fallo = e.error; };
-      r.onend = () => {
-        listo();
-        if (fallo === "not-allowed" || fallo === "service-not-allowed") { micEstado = "negado"; salida.replaceChildren(el("div", {class:"tip"}, textoMicNegado())); return; }
-        if (!oidos.length) { salida.replaceChildren(el("div", {class:"tip"}, "🤷 No te escuché. Acercate al micrófono y hablá apenas se ponga rojo el botón.")); return; }
-        const p = puntuarDicho(oidos, t);
-        const msj = p.pct >= 85 ? `✅ ${p.pct}% · ¡Clavado! Felipe tosió de la emoción.` : p.pct >= 60 ? `🟡 ${p.pct}% · Casi. Repasá las palabras en rojo.` : `🔴 ${p.pct}% · Escuchalo lento 🐢 y probá otra vez.`;
-        tono(p.pct >= 85 ? "ok" : "no");
-        salida.replaceChildren(el("div", {class:"card micres"}, el("b", {}, msj),
-          el("div", {class:"frase"}, ...p.palabras.map((w, i) => el("span", {class:p.marcas[i] ? "ok" : "mal"}, w + " "))),
-          el("div", {class:"small muted"}, "Escuché: «" + p.oido + "»")));
-      };
-      detener = () => r.stop();
-      b.textContent = "🔴 Te escucho… (tocá para terminar)";
-      salida.replaceChildren();
-      try { r.start(); } catch { listo(); }
-    } else {
-      let s; try { s = await navigator.mediaDevices.getUserMedia({audio:true}); } catch { micEstado = "negado"; listo(); salida.replaceChildren(el("div", {class:"tip"}, textoMicNegado())); return; }
-      if (!window.MediaRecorder) { s.getTracks().forEach(x => x.stop()); listo(); salida.replaceChildren(el("div", {class:"tip"}, "Este navegador no puede grabar. Probá en Chrome.")); return; }
-      const partes = [], rec = new MediaRecorder(s);
-      rec.ondataavailable = e => { if (e.data.size) partes.push(e.data); };
-      rec.onstop = () => {
-        s.getTracks().forEach(x => x.stop()); listo();
-        const audio = new Audio(URL.createObjectURL(new Blob(partes, {type:rec.mimeType || "audio/webm"})));
-        salida.replaceChildren(el("div", {class:"card micres"}, el("b", {}, "🎧 Compará tu voz con la original. ¿Suenan parecido?"),
-          el("div", {class:"row", style:"justify-content:center"}, el("button", {class:"btn", onclick:() => audio.play()}, "▶️ Mi voz"), el("button", {class:"btn", onclick:() => decir(t, l)}, "🔊 Original"))));
-        audio.onended = () => { audio.onended = null; decir(t, l); };
-        audio.play().catch(() => {});
-      };
-      const tope = setTimeout(() => rec.state === "recording" && rec.stop(), Math.min(10000, 2000 + t.length * 120));
-      detener = () => { clearTimeout(tope); if (rec.state === "recording") rec.stop(); };
-      b.textContent = "🔴 Grabando… (tocá para terminar)";
-      salida.replaceChildren();
-      rec.start();
-    }
+    if (micEstado !== "ok" && !(await pedirMicrofono())) { listo(); aviso(textoMicNegado()); return; }
+    // El reconocedor no sabe latín, y en la app instalada de iPhone no funciona: ahí se graba directamente.
+    const iosInstalada = esIOS && instalada();
+    if (Reconocedor && l !== "la" && !iosInstalada) reconocer(); else grabar();
   };
   return el("div", {class:"micbox"}, b, salida);
 }
@@ -2235,21 +2285,31 @@ const botonVoz = (texto, l, lento = false, quien = null) => el("button", {class:
 let ctxAudio = null;
 // Los tonos se generan como pequeños archivos WAV y se tocan igual que las voces: así suenan
 // en todos los celulares (el audio web «sintetizado» se suspende o queda mudo en muchos).
-const urlsTono = {};
-function urlTono(tipo){
-  if (urlsTono[tipo]) return urlsTono[tipo];
+const urlsTono = {}, buffersTono = {};
+// Las muestras de cada sonido: acierto, error, final y el clic de cada toque.
+function pcmTono(tipo){
+  const sr = 22050;
+  if (tipo === "tap") {
+    const n = Math.floor(sr * .045), pcm = new Float32Array(n);
+    for (let k = 0; k < n; k++) { const t = k / sr; pcm[k] = Math.sin(2 * Math.PI * 1250 * t) * Math.exp(-t * 90) * .35; }
+    return {pcm, sr};
+  }
   const notas = tipo === "ok" ? [660, 880] : tipo === "fin" ? [523, 659, 784, 1047] : [220, 180];
-  const sr = 22050, paso = .09, dur = .17, total = Math.ceil(sr * (paso * (notas.length - 1) + dur + .02));
+  const paso = .09, dur = .17, total = Math.ceil(sr * (paso * (notas.length - 1) + dur + .02));
   const pcm = new Float32Array(total);
   notas.forEach((f, i) => {
     const ini = Math.floor(sr * paso * i), largo = Math.floor(sr * dur);
     for (let k = 0; k < largo && ini + k < total; k++) {
       const t = k / sr, fase = (f * t) % 1;
       const onda = tipo === "no" ? (fase < .5 ? 1 : -1) * .35 : 1 - 4 * Math.abs(fase - .5);
-      const env = Math.min(1, t / .015) * Math.exp(-t * 18);
-      pcm[ini + k] += onda * env * (tipo === "no" ? .45 : .6);
+      pcm[ini + k] += onda * Math.min(1, t / .015) * Math.exp(-t * 18) * (tipo === "no" ? .45 : .6);
     }
   });
+  return {pcm, sr};
+}
+function urlTono(tipo){
+  if (urlsTono[tipo]) return urlsTono[tipo];
+  const {pcm, sr} = pcmTono(tipo), total = pcm.length;
   const buf = new ArrayBuffer(44 + total * 2), dv = new DataView(buf);
   const txt = (o, t) => [...t].forEach((ch, i) => dv.setUint8(o + i, ch.charCodeAt(0)));
   txt(0, "RIFF"); dv.setUint32(4, 36 + total * 2, true); txt(8, "WAVE"); txt(12, "fmt ");
@@ -2258,11 +2318,32 @@ function urlTono(tipo){
   for (let k = 0; k < total; k++) dv.setInt16(44 + k * 2, Math.max(-1, Math.min(1, pcm[k])) * 32767, true);
   return (urlsTono[tipo] = URL.createObjectURL(new Blob([buf], {type:"audio/wav"})));
 }
+// El sistema de sonido del celular se duerme: se lo despierta en cada toque (dentro del gesto, que es cuando el celular lo permite).
+function despertarSonido(){
+  try {
+    if (!ctxAudio) {
+      ctxAudio = new (window.AudioContext || window.webkitAudioContext)();
+      try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch {} // iPhone: que suene aunque esté en silencio, como las voces
+    }
+    if (ctxAudio.state !== "running") ctxAudio.resume().catch(() => {});
+  } catch {}
+  return ctxAudio;
+}
 function tono(tipo){
   if (!S.p.sonido) return;
-  try { const a = new Audio(urlTono(tipo)); a.volume = tipo === "no" ? .7 : .9; a.play().catch(() => tonoWeb(tipo)); }
-  catch { tonoWeb(tipo); }
+  try {
+    const c = despertarSonido();
+    if (!buffersTono[tipo]) { const {pcm, sr} = pcmTono(tipo); const bf = c.createBuffer(1, pcm.length, sr); bf.copyToChannel(pcm, 0); buffersTono[tipo] = bf; }
+    const src = c.createBufferSource(), g = c.createGain();
+    src.buffer = buffersTono[tipo]; g.gain.value = tipo === "tap" ? .55 : tipo === "no" ? .8 : 1;
+    src.connect(g).connect(c.destination); src.start();
+  } catch { try { new Audio(urlTono(tipo)).play().catch(() => {}); } catch {} }
 }
+// Clic suave en cada toque de algo tocable.
+addEventListener("pointerdown", e => {
+  despertarSonido();
+  if (e.target.closest && e.target.closest("button, a.btn, .opt, .tok, .node, .txt, [role=button], .tito")) tono("tap");
+}, {capture:true, passive:true});
 // Respaldo: el tono sintetizado de antes.
 function tonoWeb(tipo){
   try {
@@ -2938,8 +3019,8 @@ function cielo(){
   // el lienzo se dimensiona al alto máximo de la pantalla y solo se rearma si cambia el ancho (girar el celu).
   const armar = () => {
     if (W === innerWidth && estrellas.length) return;
-    dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = Math.max(innerHeight, screen.height || 0);
-    c.style.height = H + "px";
+    dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth;
+    H = Math.max(c.clientHeight || 0, innerHeight); // 100lvh: el alto con la barra escondida, no cambia al hacer scroll
     c.width = W * dpr; c.height = H * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0);
     const n = Math.round(Math.min(220, W * H / 5500));
     estrellas = Array.from({length:n}, () => ({x:Math.random() * W, y:Math.random() * H, r:Math.random() * 1.4 + .3,
