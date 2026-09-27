@@ -194,7 +194,25 @@ html,body{overscroll-behavior-y:none}
 .envivo{font-weight:800;font-size:18px;padding:10px 12px;border-radius:14px;background:var(--act-soft)}
 .medidor{height:10px;border-radius:6px;background:var(--line);overflow:hidden}
 .medidor i{display:block;height:100%;width:0;background:var(--good);transition:width .08s}
-.pill.descargar{border:0;cursor:pointer;background:var(--act);color:#fff;font:inherit;font-weight:800;box-shadow:0 3px 0 var(--act-dark)}
+.pill.descargar{border:0;cursor:pointer;display:inline-flex;align-items:center;gap:5px;color:#fff;font:inherit;font-weight:800;
+  background:linear-gradient(135deg,#FF8A3D,#F0508C 55%,#8C73FF);box-shadow:0 4px 14px rgba(240,80,140,.35),inset 0 1px 0 rgba(255,255,255,.3)}
+.btn-instalar{display:flex;align-items:center;gap:14px;width:100%;box-sizing:border-box;padding:12px 16px;border:0;border-radius:20px;cursor:pointer;
+  text-align:left;text-decoration:none;color:#fff;background:linear-gradient(135deg,#FF8A3D 0%,#F0508C 52%,#8C73FF 100%);
+  box-shadow:0 8px 22px rgba(240,80,140,.32),inset 0 1px 0 rgba(255,255,255,.35);transition:transform .1s,filter .1s}
+.btn-instalar:active{transform:scale(.98);filter:brightness(.95)}
+.btn-instalar .ico{flex:none;width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.22);display:grid;place-items:center}
+.btn-instalar .txt{display:flex;flex-direction:column;gap:2px}
+.btn-instalar b{font:800 18px var(--f-display);letter-spacing:.01em}
+.btn-instalar small{font:700 13px var(--f-body);opacity:.92}
+.pasos-ios{display:flex;flex-direction:column;gap:10px}
+.pasos-ios .paso{display:flex;gap:12px;align-items:flex-start;font-weight:700;line-height:1.4}
+.pasos-ios .num{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:800;color:#fff;
+  background:linear-gradient(135deg,#FF8A3D,#F0508C 55%,#8C73FF)}
+.pasos-ios .fin .num{background:var(--good)}
+details.otros{border-top:1px solid var(--line);padding-top:10px}
+details.otros summary{cursor:pointer;font-weight:800;color:var(--muted);padding:4px 0}
+details.otros[open] summary{margin-bottom:6px}
+.link-apk{align-self:center;color:var(--muted);font-weight:700;font-size:14px;text-decoration:underline;padding:4px}
 .pill.descargar[hidden]{display:none}
 .desc-fondo{position:fixed;inset:0;z-index:60;background:rgba(5,4,14,.72);display:flex;align-items:flex-end;justify-content:center;padding:12px;overflow:auto}
 .desc-hoja{width:100%;max-width:520px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 24px);overflow:auto;background:#1E1A34;margin-bottom:env(safe-area-inset-bottom,0px)}
@@ -251,7 +269,7 @@ select{width:100%;background:var(--surface);border:2px solid var(--line);border-
   <header class="top" id="topbar">
     <div class="flags" id="flags" role="group" aria-label="Idioma"></div>
     <div class="pills">
-      <button class="pill descargar" id="btnDescargar" type="button" hidden aria-label="Descargar la app">📲 App</button>
+      <button class="pill descargar" id="btnDescargar" type="button" hidden aria-label="Instalar la app"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3.5v11.5m0 0-4.6-4.6M12 15l4.6-4.6M5 19.5h14" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Instalar</button>
       <span class="pill fire" title="Días seguidos">🔥 <span id="pRacha">0</span></span>
       <span class="pill xp" title="Puntos de experiencia">⚡ <span id="pXp">0</span></span>
     </div>
@@ -1911,18 +1929,51 @@ const LS = "trilingua_v2";
 // Direccion publica de la version instalable. Vacia hasta que se publique en GitHub Pages.
 const URL_APP = "https://franyttt-art.github.io/trilingua/";
 let pedidoInstalar = null;
-addEventListener("beforeinstallprompt", e => { e.preventDefault(); pedidoInstalar = e; actualizarBanners(); });
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); pedidoInstalar = e; actualizarBanners(); if (document.getElementById("descarga")) abrirDescarga(); });
 addEventListener("appinstalled", () => { pedidoInstalar = null; toast("📲 ¡Trilingua instalada! Buscá el ícono de Felipe."); actualizarBanners(); });
 const UA = navigator.userAgent || "";
 // WhatsApp, Instagram, Facebook y otras apps abren los links en un navegador interno que no deja instalar.
 const enAppInterna = /FBAN|FBAV|Instagram|WhatsApp|Line\/|TikTok|Snapchat|; wv\)/i.test(UA);
 const esIOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
 const esAndroid = /Android/i.test(UA);
+// En iPhone se instala con «Agregar a inicio»: desde Safari o, desde iOS 16.4, también desde Chrome, Edge o Firefox.
+const navIOS = /CriOS/i.test(UA) ? "Chrome" : /FxiOS/i.test(UA) ? "Firefox" : /EdgiOS/i.test(UA) ? "Edge" : "Safari";
+function pasosIphone(){
+  const lista = navIOS === "Safari"
+    ? ["Tocá el botón Compartir ⬆️ (abajo, en el centro de la pantalla).", "Deslizá hacia abajo y tocá «Agregar a inicio».", "Tocá «Agregar» arriba a la derecha."]
+    : [`Tocá el botón Compartir ⬆️ de ${navIOS} (${navIOS === "Chrome" ? "arriba a la derecha, al lado de la dirección" : "en la barra del navegador"}).`,
+       "Elegí «Agregar a pantalla de inicio» (si no la ves, deslizá o tocá «Más» ⋯).", "Tocá «Agregar»."];
+  return el("div", {class:"pasos-ios"},
+    ...lista.map((t, i) => el("div", {class:"paso"}, el("span", {class:"num"}, String(i + 1)), el("span", {}, t))),
+    el("div", {class:"paso fin"}, el("span", {class:"num"}, "✓"), el("span", {}, "¡Listo! Felipe aparece en tu pantalla de inicio. Abrila desde ahí: funciona como app y se actualiza sola.")),
+    navIOS === "Safari" ? null : el("div", {class:"small muted"}, `Necesitás iOS 16.4 o más nuevo. Si en ${navIOS} no aparece la opción, abrí el link en Safari y hacé lo mismo.`));
+}
 // La app de Android (APK) que se descarga desde el sitio publicado.
 const URL_APK = () => (URL_APP || "") + "Trilingua.apk";
-const botonApk = () => el("a", {class:"btn pri big", href:URL_APK(), download:"Trilingua.apk", rel:"noopener", style:"text-align:center;text-decoration:none",
-  onclick:() => toast("⬇️ Bajando Trilingua… Cuando termine, tocá el archivo para instalarla.")}, "📲 Descargar la app");
-const pasosApk = () => el("div", {class:"pasos"}, "1. Tocá «Descargar la app». 2. Cuando termine, abrí el archivo Trilingua.apk (aparece en las notificaciones o en Descargas) y tocá «Instalar». 3. Si el celular pregunta, permití «instalar apps de esta fuente». ¡Listo: queda Felipe en tu pantalla!");
+const ICO_DESCARGA = `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3.5v11.5m0 0-4.6-4.6M12 15l4.6-4.6M5 19.5h14" stroke="#fff" stroke-width="2.6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+const botonLindo = (tag, attrs, titulo, sub) => el(tag, {class:"btn-instalar", ...attrs},
+  el("span", {class:"ico", html:ICO_DESCARGA}), el("span", {class:"txt"}, el("b", {}, titulo), sub ? el("small", {}, sub) : null));
+// Instalación directa del navegador (Chrome/Edge): un toque, el navegador confirma y queda como app real
+// (en Android, Chrome la instala como app del sistema, sin archivos ni permisos). Se actualiza sola.
+async function instalarNativo(){
+  const p = pedidoInstalar; if (!p) return;
+  pedidoInstalar = null; p.prompt();
+  let r = null; try { r = await p.userChoice; } catch {}
+  cerrarDescarga(); actualizarBanners(); pintarCabecera();
+  if (r && r.outcome === "accepted") toast("📲 ¡Instalando! En unos segundos aparece Felipe en tu pantalla.");
+}
+const botonInstalarNativo = () => botonLindo("button", {type:"button", onclick:instalarNativo}, "Instalar Trilingua",
+  esAndroid || esIOS ? "Un toque y queda en tu celular" : "Un clic y queda en tu computadora");
+const avisoApk = () => toast("⬇️ Bajando… Cuando termine, tocá «Abrir» en el aviso de Chrome.");
+const botonApk = secundario => secundario
+  ? el("a", {class:"link-apk", href:URL_APK(), download:"Trilingua.apk", rel:"noopener", onclick:avisoApk}, "¿No te funciona? Descargá el archivo APK")
+  : botonLindo("a", {href:URL_APK(), download:"Trilingua.apk", rel:"noopener", onclick:avisoApk}, "Descargar la app", "Archivo de 2 MB para Android");
+const pasosApk = () => el("div", {class:"pasos"},
+  "1. Cuando termine de bajar, tocá «Abrir» en el aviso de Chrome (o en la notificación de descarga). " +
+  "2. Si aparece «Por tu seguridad…», tocá «Configuración», activá «Permitir de esta fuente» y volvé atrás: ahí aparece «Instalar». " +
+  "3. Si desde la app Archivos no pasa nada, abrilo desde Chrome: menú ⋮ → Descargas → Trilingua.apk.");
+// Android: si Chrome ofrece la instalación directa, es la opción principal; si no, el APK con sus pasos.
+const opcionAndroid = () => pedidoInstalar ? [botonInstalarNativo(), botonApk(true)] : [botonApk(false), pasosApk()];
 let bannerOculto = (() => { try { return localStorage.getItem("trilingua_banner") === "no"; } catch { return false; } })();
 function bannerInstalar(){
   if (instalada() || bannerOculto) return null;
@@ -1937,14 +1988,14 @@ function bannerInstalar(){
     try { await navigator.clipboard.writeText(URL_APP || location.href); toast("📋 Link copiado. Pegalo en Chrome."); } catch { toast(URL_APP || location.href); }
   }}, "📋 Copiar link");
   if (esAndroid && URL_APP) {
-    b.append(titulo("Instalá la app de Trilingua", "Es una app de Android: se descarga y se instala como cualquier otra."), botonApk(), pasosApk());
+    b.append(titulo("Instalá la app de Trilingua", "Queda en tu celular como cualquier otra app, y se actualiza sola."), ...opcionAndroid());
     if (enAppInterna) b.append(el("div", {class:"small muted"}, "Si no baja desde acá, tocá ⋮ → «Abrir en Chrome» y descargala desde ahí."));
   } else if (enMarco && URL_APP) {
     b.append(titulo("Instalá Trilingua en tu celular", "Con voces, sin internet y con micrófono."),
       el("a", {class:"btn pri big", href:URL_APP, target:"_blank", rel:"noopener", style:"text-align:center;text-decoration:none"}, "Abrir la app para instalarla"));
-  } else if (pedidoInstalar) {
+  } else if (pedidoInstalar && !esIOS) {
     b.append(titulo("Instalá Trilingua", "Queda como una app con el ícono de Felipe. Funciona sin internet."),
-      el("button", {class:"btn pri big", onclick:async () => { const p = pedidoInstalar; pedidoInstalar = null; p.prompt(); try { await p.userChoice; } catch {} actualizarBanners(); }}, "📲 Instalar ahora"));
+      botonInstalarNativo());
   } else if (enAppInterna) {
     b.append(titulo("Para instalarla, abrila en tu navegador", "Estás en el navegador de otra app (WhatsApp, Instagram…) y desde acá no se puede instalar."),
       el("div", {class:"pasos"}, esIOS
@@ -1952,8 +2003,7 @@ function bannerInstalar(){
         : "1. Tocá los tres puntos ⋮ arriba a la derecha. 2. Elegí «Abrir en Chrome» (o «Abrir en el navegador»). 3. Ahí aparece «Instalar app»."),
       copiarLink());
   } else if (esIOS) {
-    b.append(titulo("Instalá Trilingua en tu iPhone", "En iPhone se instala desde Safari:"),
-      el("div", {class:"pasos"}, "1. Tocá Compartir ⬆️ (abajo, en el centro). 2. Deslizá y elegí «Agregar a inicio». 3. Tocá «Agregar». ¡Listo, aparece Felipe en tu pantalla!"));
+    b.append(titulo("Instalá Trilingua en tu iPhone", `Son 3 toques desde ${navIOS}:`), pasosIphone());
   } else {
     b.append(titulo("Instalá Trilingua", "Si no te aparece el botón para instalar:"),
       el("div", {class:"pasos"}, "Tocá los tres puntos ⋮ arriba a la derecha de Chrome → «Instalar app» o «Agregar a pantalla principal». En PC: el ícono ⊕ a la derecha de la dirección."));
@@ -1965,18 +2015,20 @@ function bannerInstalar(){
 function abrirDescarga(){
   cerrarDescarga();
   const secc = (ico, tit, ...hijos) => el("div", {class:"desc-sec"}, el("h3", {}, ico + " " + tit), ...hijos);
-  const android = secc("🤖", "Android", el("div", {class:"small muted"}, "App de verdad: se descarga y se instala como cualquier otra."), botonApk(), pasosApk());
+  const android = secc("🤖", "Android", el("div", {class:"small muted"}, "Queda como app en tu celular y se actualiza sola."), ...(esAndroid ? opcionAndroid() : [botonApk(false), pasosApk()]));
   const pcHijos = [el("div", {class:"small muted"}, "Queda como programa, con su ventana y su ícono en el menú Inicio.")];
-  if (pedidoInstalar && !enMarco) pcHijos.push(el("button", {class:"btn pri big", onclick:async () => { const p = pedidoInstalar; pedidoInstalar = null; p.prompt(); try { await p.userChoice; } catch {} cerrarDescarga(); actualizarBanners(); }}, "💻 Instalar en esta PC"));
-  else if (enMarco && URL_APP) pcHijos.push(el("a", {class:"btn pri big", href:URL_APP, target:"_blank", rel:"noopener", style:"text-align:center;text-decoration:none"}, "💻 Abrir Trilingua para instalarla"),
-    el("div", {class:"pasos"}, "En la página que se abre, tocá el botón 📲 App → «Instalar en esta PC»."));
+  if (pedidoInstalar && !enMarco && !esAndroid) pcHijos.push(botonInstalarNativo());
+  else if (enMarco && URL_APP) pcHijos.push(botonLindo("a", {href:URL_APP, target:"_blank", rel:"noopener"}, "Abrir Trilingua para instalarla", "Se abre en tu navegador"),
+    el("div", {class:"pasos"}, "En la página que se abre, tocá «Instalar» arriba a la derecha."));
   else pcHijos.push(el("div", {class:"pasos"}, "Abrí esta página en Chrome o Edge y tocá el ícono de instalar ⊕ a la derecha de la dirección (o menú ⋮ → «Instalar Trilingua»)."));
   const pc = secc("💻", "PC (Windows o Mac)", ...pcHijos);
-  const iphone = secc("🍎", "iPhone y iPad", el("div", {class:"pasos"}, "Abrí esta página en Safari → tocá Compartir ⬆️ → «Agregar a inicio» → «Agregar». Queda con el ícono de Felipe y funciona como app."));
-  const orden = esAndroid ? [android, pc, iphone] : esIOS ? [iphone, android, pc] : [pc, android, iphone];
+  const iphone = secc("🍎", "iPhone y iPad", esIOS ? pasosIphone()
+    : el("div", {class:"pasos"}, "Abrí esta página en el iPhone (Safari o Chrome) → botón Compartir ⬆️ → «Agregar a inicio» → «Agregar»."));
+  const [principal, ...resto] = esAndroid ? [android, pc, iphone] : esIOS ? [iphone, pc, android] : [pc, android, iphone];
+  const orden = [principal, el("details", {class:"otros"}, el("summary", {}, "Otros dispositivos"), ...resto)];
   const hoja = el("div", {class:"card desc-hoja", role:"dialog", "aria-label":"Descargá Trilingua"},
     el("div", {class:"row"}, el("h2", {class:"sp"}, "📲 Descargá Trilingua"), el("button", {class:"xbtn", "aria-label":"Cerrar", onclick:cerrarDescarga}, "✕")),
-    el("div", {class:"small muted"}, "Las actualizaciones te llegan solas: no hace falta volver a descargarla."),
+    el("div", {class:"small muted"}, "Las actualizaciones te llegan solas: no hace falta volver a instalarla."),
     ...orden);
   const fondo = el("div", {class:"desc-fondo", id:"descarga", onclick:e => { if (e.target === fondo) cerrarDescarga(); }}, hoja);
   document.body.append(fondo);
@@ -1997,19 +2049,20 @@ function tarjetaInstalar(){
   else {
     c.append(el("h3", {}, "📲 Instalá Trilingua en tu celu o PC"),
       el("div", {class:"small muted"}, "Queda como una app más, con su ícono, funciona sin internet y el micrófono se activa solo."));
-    if (esAndroid && URL_APP) c.append(botonApk(), pasosApk());
-    else if (pedidoInstalar) c.append(el("button", {class:"btn pri big", onclick:async () => { pedidoInstalar.prompt(); await pedidoInstalar.userChoice; pedidoInstalar = null; render(); }}, "📲 Instalar ahora"));
+    if (esAndroid && URL_APP) c.append(...opcionAndroid());
+    else if (esIOS) c.append(pasosIphone());
+    else if (pedidoInstalar) c.append(botonInstalarNativo());
     else {
       if (URL_APP && (enMarco || location.href.indexOf(URL_APP) !== 0)) c.append(el("a", {class:"btn pri big", href:URL_APP, target:"_blank", rel:"noopener", style:"text-align:center;text-decoration:none"}, "📲 Abrir la versión instalable"));
       c.append(el("div", {class:"small"},
         el("div", {}, "🤖 Android: abrí esta página en el celular y tocá «Descargar la app»."),
-        el("div", {}, "🍎 iPhone (Safari): botón Compartir ⬆️ → «Agregar a inicio»."),
+        el("div", {}, "🍎 iPhone (Safari o Chrome): botón Compartir ⬆️ → «Agregar a inicio»."),
         el("div", {}, "💻 PC (Chrome o Edge): el ícono de instalar ⊕ a la derecha de la dirección.")));
     }
   }
   if (!instalada()) c.append(el("button", {class:"btn", onclick:abrirDescarga}, "📲 Ver todas las formas de descargarla"));
   if (URL_APP) c.append(el("button", {class:"btn", onclick:async () => {
-    const datos = {title:"Trilingua", text:"Aprendé inglés, alemán y latín con Felipe, un pijuí fumador. En Android abrilo y tocá «Descargar la app»; en iPhone, Compartir → «Agregar a inicio»:", url:URL_APP};
+    const datos = {title:"Trilingua", text:"Aprendé inglés, alemán y latín con Felipe, un pijuí fumador. Tocá este link (no lo escribas a mano) y apretá «Instalar»:", url:URL_APP};
     try { if (navigator.share) { await navigator.share(datos); return; } } catch (e) { if (e && e.name === "AbortError") return; }
     try { await navigator.clipboard.writeText(URL_APP); toast("📋 Link copiado: pegalo en WhatsApp"); } catch { toast(URL_APP); }
   }}, "📤 Compartir la app"));
@@ -3159,7 +3212,7 @@ conectarNube();
 setTimeout(() => { for (const tipo of ["tap", "ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927165000";
+const VERSION_APP = "20260927170037";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));
