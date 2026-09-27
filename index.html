@@ -1851,7 +1851,7 @@ function molestarFelipe(s, size, cara){
   const ahora = Date.now(); toquesFelipe = ahora - ultimoToque < 6000 ? toquesFelipe + 1 : 1; ultimoToque = ahora;
   const globo = s.closest(".tito-row")?.querySelector(".bubble");
   const decirle = txt => { if (globo) { if (!globo.dataset.orig) globo.dataset.orig = globo.textContent; globo.textContent = txt; } else toast("🐦 " + txt); };
-  tono("no");
+  tono(toquesFelipe >= 5 ? "tosLarga" : toquesFelipe >= 3 ? "tos" : "grr");
   if (toquesFelipe >= 5) {
     decirle(azar(FELIPE.seVa)); toquesFelipe = 0;
     s.innerHTML = tito(size, "enojado"); s.classList.add("afuera");
@@ -2285,24 +2285,47 @@ const botonVoz = (texto, l, lento = false, quien = null) => el("button", {class:
 let ctxAudio = null;
 // Los tonos se generan como pequeños archivos WAV y se tocan igual que las voces: así suenan
 // en todos los celulares (el audio web «sintetizado» se suspende o queda mudo en muchos).
-const urlsTono = {}, buffersTono = {};
-// Las muestras de cada sonido: acierto, error, final y el clic de cada toque.
+const urlsTono = {}, buffersTono = {}, poolTono = {};
+// Muestras de cada sonido. «ok», «no» y «fin» copian el sonido original (ataque suave de 20 ms y caída
+// exponencial hasta los 160 ms); «tap» es un pop grave y suave; «grr» y «tos» son de Felipe enojado.
 function pcmTono(tipo){
   const sr = 22050;
+  const lleno = seg => new Float32Array(Math.ceil(sr * seg));
+  const ruido = (() => { let x = 0; return corte => { x += corte * ((Math.random() * 2 - 1) - x); return x; }; })();
   if (tipo === "tap") {
-    const n = Math.floor(sr * .045), pcm = new Float32Array(n);
-    for (let k = 0; k < n; k++) { const t = k / sr; pcm[k] = Math.sin(2 * Math.PI * 1250 * t) * Math.exp(-t * 90) * .35; }
+    const pcm = lleno(.07);
+    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = 520 - 260 * Math.min(1, t / .05);
+      pcm[k] = Math.sin(2 * Math.PI * f * t) * Math.min(1, t / .004) * Math.exp(-t * 55) * .32; }
+    return {pcm, sr};
+  }
+  if (tipo === "grr") { // gruñido: «hmmph» grave con vibrato
+    const pcm = lleno(.42);
+    let fase = 0;
+    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = 105 - 30 * (t / .42) + 6 * Math.sin(2 * Math.PI * 22 * t);
+      fase += f / sr; const saw = 2 * (fase % 1) - 1;
+      pcm[k] = (saw * .55 + ruido(.05) * .9) * Math.min(1, t / .03) * Math.min(1, (.42 - t) / .12) * .5; }
+    return {pcm, sr};
+  }
+  if (tipo === "tos" || tipo === "tosLarga") { // tos de fumador: golpes de aire ásperos
+    const golpes = tipo === "tos" ? [0, .2] : [0, .18, .36, .62, .8];
+    const pcm = lleno(golpes[golpes.length - 1] + .3);
+    for (const g of golpes) { const ini = Math.floor(sr * g);
+      for (let k = 0; k < sr * .22 && ini + k < pcm.length; k++) { const t = k / sr;
+        const env = Math.min(1, t / .006) * Math.exp(-t * 16);
+        pcm[ini + k] += (ruido(.35) * 1.6 + Math.sin(2 * Math.PI * (190 - 80 * t) * t) * .35) * env * .55; } }
     return {pcm, sr};
   }
   const notas = tipo === "ok" ? [660, 880] : tipo === "fin" ? [523, 659, 784, 1047] : [220, 180];
-  const paso = .09, dur = .17, total = Math.ceil(sr * (paso * (notas.length - 1) + dur + .02));
-  const pcm = new Float32Array(total);
+  const pico = tipo === "no" ? .38 : .75, paso = .09;
+  const pcm = lleno(paso * (notas.length - 1) + .2);
   notas.forEach((f, i) => {
-    const ini = Math.floor(sr * paso * i), largo = Math.floor(sr * dur);
-    for (let k = 0; k < largo && ini + k < total; k++) {
+    const ini = Math.floor(sr * paso * i);
+    for (let k = 0; k < sr * .18 && ini + k < pcm.length; k++) {
       const t = k / sr, fase = (f * t) % 1;
-      const onda = tipo === "no" ? (fase < .5 ? 1 : -1) * .35 : 1 - 4 * Math.abs(fase - .5);
-      pcm[ini + k] += onda * Math.min(1, t / .015) * Math.exp(-t * 18) * (tipo === "no" ? .45 : .6);
+      const onda = tipo === "no" ? (fase < .5 ? 1 : -1) : 1 - 4 * Math.abs(fase - .5);
+      // envolvente exponencial igual a la original: .0001 → pico en 20 ms → .0001 a los 160 ms
+      const env = t < .02 ? .0001 * Math.pow(pico / .0001, t / .02) : pico * Math.pow(.0001 / pico, Math.min(1, (t - .02) / .14));
+      pcm[ini + k] += onda * env;
     }
   });
   return {pcm, sr};
@@ -2317,6 +2340,13 @@ function urlTono(tipo){
   dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); txt(36, "data"); dv.setUint32(40, total * 2, true);
   for (let k = 0; k < total; k++) dv.setInt16(44 + k * 2, Math.max(-1, Math.min(1, pcm[k])) * 32767, true);
   return (urlsTono[tipo] = URL.createObjectURL(new Blob([buf], {type:"audio/wav"})));
+}
+// Varios reproductores comunes ya cargados por sonido: se usan cuando el sistema de sonido web está dormido.
+function tocarComoAudio(tipo){
+  const pool = poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; return a; }));
+  const a = pool.find(x => x.paused || x.ended) || pool[0];
+  try { a.currentTime = 0; } catch {}
+  a.play().catch(() => {});
 }
 // El sistema de sonido del celular se duerme: se lo despierta en cada toque (dentro del gesto, que es cuando el celular lo permite).
 function despertarSonido(){
@@ -2333,16 +2363,17 @@ function tono(tipo){
   if (!S.p.sonido) return;
   try {
     const c = despertarSonido();
+    // Si el sistema web está despierto suena por ahí (sin demora); si no, como audio común. Nunca por los dos.
+    if (!c || c.state !== "running") { tocarComoAudio(tipo); return; }
     if (!buffersTono[tipo]) { const {pcm, sr} = pcmTono(tipo); const bf = c.createBuffer(1, pcm.length, sr); bf.copyToChannel(pcm, 0); buffersTono[tipo] = bf; }
-    const src = c.createBufferSource(), g = c.createGain();
-    src.buffer = buffersTono[tipo]; g.gain.value = tipo === "tap" ? .55 : tipo === "no" ? .8 : 1;
-    src.connect(g).connect(c.destination); src.start();
-  } catch { try { new Audio(urlTono(tipo)).play().catch(() => {}); } catch {} }
+    const src = c.createBufferSource(); src.buffer = buffersTono[tipo]; src.connect(c.destination); src.start();
+  } catch { tocarComoAudio(tipo); }
 }
-// Clic suave en cada toque de algo tocable.
+// Pop suave en cada toque de algo tocable (Felipe tiene sus propios sonidos).
 addEventListener("pointerdown", e => {
   despertarSonido();
-  if (e.target.closest && e.target.closest("button, a.btn, .opt, .tok, .node, .txt, [role=button], .tito")) tono("tap");
+  const t = e.target.closest ? e.target : null;
+  if (t && !t.closest(".tito") && t.closest("button, a.btn, .opt, .tok, .node, .txt, [role=button]")) tono("tap");
 }, {capture:true, passive:true});
 // Respaldo: el tono sintetizado de antes.
 function tonoWeb(tipo){
