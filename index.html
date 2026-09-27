@@ -44,7 +44,7 @@ button{cursor:pointer}
 :focus-visible{outline:3px solid var(--act);outline-offset:2px}
 .app{max-width:600px;margin:0 auto;min-height:100%;padding-inline:16px;padding-bottom:calc(88px + env(safe-area-inset-bottom,0px))}
 /* ---------- barra superior ---------- */
-header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:rgba(11,10,26,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);margin-inline:-16px;padding:10px 16px;display:flex;align-items:center;gap:10px}
+header.top{position:sticky;top:0;padding-top:calc(10px + env(safe-area-inset-top,0px)) !important;z-index:5;background:rgba(11,10,26,.72);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);margin-inline:-16px;padding:10px 16px;display:flex;align-items:center;gap:10px}
 .lvlhead{text-align:center;padding:14px 16px;border-radius:18px;border:2px dashed var(--line);background:rgba(30,26,52,.6);width:100%;max-width:360px}
 .lvlhead b{font-family:var(--f-display);font-size:22px;display:block}
 .flags{display:flex;gap:6px}
@@ -64,7 +64,7 @@ nav.tabs button[aria-current="page"]{color:var(--act)}
 nav.tabs button[aria-current="page"] .ic{filter:none;transform:translateY(-2px) scale(1.1)}
 .badge{position:absolute;top:4px;left:calc(50% + 8px);background:var(--bad);color:#fff;font-size:11px;border-radius:99px;padding:0 6px;font-weight:800}
 body.inlesson nav.tabs{display:none}
-body.inlesson .app{padding-bottom:24px}
+body.inlesson .app{padding-bottom:24px;padding-top:env(safe-area-inset-top,0px)}
 /* ---------- piezas comunes ---------- */
 main{display:flex;flex-direction:column;gap:16px;padding-block:4px 16px}
 .card{background:var(--surface);border:2px solid var(--line);border-radius:20px;padding:16px}
@@ -215,9 +215,12 @@ details.otros[open] summary{margin-bottom:6px}
 .off-fila{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid var(--line)}
 .off-fila .row{gap:10px;align-items:center}
 .off-fila .btn{padding:8px 14px}
+.off-fila.grande{border-top:0;padding-top:0;gap:8px}
+.offline-inicio{display:flex;flex-direction:column;gap:12px;border-color:var(--good)}
+.btn-instalar:disabled{opacity:.7;cursor:default}
 .link-apk{align-self:center;color:var(--muted);font-weight:700;font-size:14px;text-decoration:underline;padding:4px}
 .pill.descargar[hidden]{display:none}
-.desc-fondo{position:fixed;inset:0;z-index:60;background:rgba(5,4,14,.72);display:flex;align-items:flex-end;justify-content:center;padding:12px;overflow:auto}
+.desc-fondo{position:fixed;inset:0;z-index:60;background:rgba(5,4,14,.72);display:flex;align-items:flex-end;justify-content:center;padding:12px;padding-top:calc(12px + env(safe-area-inset-top,0px));overflow:auto}
 .desc-hoja{width:100%;max-width:520px;display:flex;flex-direction:column;gap:14px;max-height:calc(100vh - 24px);overflow:auto;background:#1E1A34;margin-bottom:env(safe-area-inset-bottom,0px)}
 .desc-sec{display:flex;flex-direction:column;gap:10px;padding-top:12px;border-top:1px solid var(--line)}
 .desc-sec h3{margin:0}
@@ -2111,6 +2114,43 @@ async function descargarAudios(urls, alAvanzar = () => {}){
   await Promise.all(Array.from({length:6}, trabajar));
   return fallas;
 }
+// Cuántos audios de cada idioma ya están guardados (se recuerda para no recontar en cada pantalla).
+const guardadosOffline = {};
+async function estadoOffline(l){
+  const urls = audiosDe(l);
+  if (guardadosOffline[l] == null) guardadosOffline[l] = await contarGuardados(urls);
+  return {n:guardadosOffline[l], total:urls.length, urls};
+}
+// Una fila con el idioma, su barra de progreso y el botón para bajarlo.
+function filaDescarga(l, grande){
+  const barra = el("i"), estado = el("span", {class:"small muted"}, "Revisando…");
+  const boton = grande
+    ? botonLindo("button", {type:"button", disabled:true}, `Descargar ${CURSO[l].nombre}`, "Unos 20 MB · con wifi, mejor")
+    : el("button", {class:"btn", disabled:true}, "Descargar");
+  const fila = el("div", {class:"off-fila" + (grande ? " grande" : "")},
+    grande ? null : el("div", {class:"row"}, el("b", {class:"sp"}, CURSO[l].nombre), estado, boton),
+    grande ? boton : null,
+    el("div", {class:"medidor"}, barra), grande ? estado : null);
+  const texto = t => { if (grande) boton.querySelector("b").textContent = t; else boton.textContent = t; };
+  const pintar = (n, total) => { barra.style.width = (n / total * 100) + "%"; estado.textContent = n >= total ? "✓ Listo para usar sin internet" : `${n} de ${total} audios guardados`; };
+  estadoOffline(l).then(({n, total}) => { pintar(n, total); boton.disabled = n >= total; texto(n >= total ? "Descargado ✓" : n ? `Completar ${grande ? CURSO[l].nombre : ""}`.trim() : grande ? `Descargar ${CURSO[l].nombre}` : "Descargar"); });
+  boton.onclick = async () => {
+    if (!navigator.onLine) { toast("Necesitás internet para bajar los audios."); return; }
+    try { await navigator.storage?.persist?.(); } catch {} // que el celular no los borre para liberar espacio
+    boton.disabled = true; texto("Bajando…");
+    const {urls} = await estadoOffline(l), c = await caches.open(CACHE_AUDIO), faltan = [];
+    for (const u of urls) if (!(await c.match(u))) faltan.push(u);
+    const ya = urls.length - faltan.length;
+    const fallas = await descargarAudios(faltan, n => pintar(ya + n, urls.length));
+    guardadosOffline[l] = await contarGuardados(urls);
+    pintar(guardadosOffline[l], urls.length);
+    const listo = guardadosOffline[l] >= urls.length;
+    texto(listo ? "Descargado ✓" : "Reintentar"); boton.disabled = listo;
+    toast(fallas ? `Faltaron ${fallas} audios: tocá «Reintentar» con mejor señal.` : `✓ ${CURSO[l].nombre} listo para usar sin internet`);
+    if (listo && grande) setTimeout(() => fila.closest(".offline-inicio")?.remove(), 2500);
+  };
+  return fila;
+}
 function tarjetaOffline(){
   const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:12px"}, el("h3", {}, "📴 Usar sin internet"));
   if (enMarco) { c.append(el("div", {class:"small muted"}, "Esta versión (dentro de claude.ai) necesita internet. Instalá la app con el botón «⬇ Instalar» y ahí funciona sin conexión.")); return c; }
@@ -2120,32 +2160,29 @@ function tarjetaOffline(){
       : "Este navegador no puede guardar la app. Abrila en Chrome, Edge o Safari e instalala."));
     return c;
   }
-  c.append(el("div", {class:"small muted"}, "La app ya funciona sin conexión. Para escuchar las voces sin internet, bajá los audios del idioma que estés estudiando (unos 20 MB cada uno). Lo que abras con internet se guarda solo."));
-  for (const l of ["en", "de", "la"]) {
-    const urls = audiosDe(l), barra = el("i"), estado = el("span", {class:"small muted"}, "Revisando…");
-    const boton = el("button", {class:"btn", disabled:true}, "Descargar");
-    const fila = el("div", {class:"off-fila"},
-      el("div", {class:"row"}, el("b", {class:"sp"}, CURSO[l].nombre), estado, boton),
-      el("div", {class:"medidor"}, barra));
-    const pintar = (n, total) => { barra.style.width = (n / total * 100) + "%"; estado.textContent = n >= total ? "✓ Listo" : `${n} de ${total} audios`; };
-    contarGuardados(urls).then(n => { pintar(n, urls.length); boton.disabled = n >= urls.length; boton.textContent = n >= urls.length ? "Descargado" : n ? "Completar" : "Descargar"; });
-    boton.onclick = async () => {
-      if (!navigator.onLine) { toast("Necesitás internet para bajar los audios."); return; }
-      try { await navigator.storage?.persist?.(); } catch {} // que el celular no los borre para liberar espacio
-      boton.disabled = true; boton.textContent = "Bajando…";
-      const ya = await contarGuardados(urls);
-      const faltan = [];
-      const c2 = await caches.open(CACHE_AUDIO);
-      for (const u of urls) if (!(await c2.match(u))) faltan.push(u);
-      const fallas = await descargarAudios(faltan, n => pintar(ya + n, urls.length));
-      const total = await contarGuardados(urls);
-      pintar(total, urls.length);
-      boton.textContent = total >= urls.length ? "Descargado" : "Reintentar"; boton.disabled = total >= urls.length;
-      toast(fallas ? `Faltaron ${fallas} audios: tocá «Reintentar» con mejor señal.` : `✓ ${CURSO[l].nombre} listo para usar sin internet`);
-    };
-    c.append(fila);
-  }
+  c.append(el("div", {class:"small muted"}, "La app ya funciona sin conexión. Para escuchar las voces sin internet, bajá los audios de cada idioma (unos 20 MB cada uno). Lo que abras con internet se guarda solo."));
+  for (const l of ["en", "de", "la"]) c.append(filaDescarga(l, false));
   return c;
+}
+// En la pantalla principal de la app instalada: si al idioma actual le faltan audios, se ofrece bajarlo.
+function tarjetaOfflineInicio(v){
+  if (!puedeOffline() || !instalada()) return;
+  let oculto = false; try { oculto = localStorage.getItem("trilingua_off_" + S.lang) === "no"; } catch {}
+  if (oculto) return;
+  const l = S.lang;
+  estadoOffline(l).then(({n, total}) => {
+    if (n >= total || S.lang !== l || !v.isConnected) return;
+    const cerrar = el("button", {class:"xbtn", "aria-label":"Ocultar", onclick:() => {
+      try { localStorage.setItem("trilingua_off_" + l, "no"); } catch {} tarjeta.remove(); toast("Lo tenés en Perfil → «Usar sin internet».");
+    }}, "✕");
+    const tarjeta = el("div", {class:"card offline-inicio"},
+      el("div", {class:"row"}, el("span", {style:"font-size:30px"}, "📴"),
+        el("div", {class:"sp"}, el("b", {}, `Bajá ${CURSO[l].nombre} para usarlo sin internet`),
+          el("div", {class:"small muted"}, "Así las voces suenan aunque no tengas señal.")), cerrar),
+      filaDescarga(l, true));
+    const heroe = v.querySelector(".hero");
+    heroe ? heroe.after(tarjeta) : v.prepend(tarjeta);
+  });
 }
 addEventListener("offline", () => toast("📴 Sin internet: seguís con lo que tenés guardado."));
 addEventListener("online", () => toast("📶 Volvió internet."));
@@ -2473,10 +2510,12 @@ function pcmTono(tipo){
   const sr = 22050;
   const lleno = seg => new Float32Array(Math.ceil(sr * seg));
   const ruido = (() => { let x = 0; return corte => { x += corte * ((Math.random() * 2 - 1) - x); return x; }; })();
-  if (tipo === "tap") {
-    const pcm = lleno(.07);
-    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = 520 - 260 * Math.min(1, t / .05);
-      pcm[k] = Math.sin(2 * Math.PI * f * t) * Math.min(1, t / .004) * Math.exp(-t * 55) * .32; }
+  if (tipo === "tap") { // burbujita: «plip» corto que sube de tono, suave
+    const pcm = lleno(.055);
+    let fase = 0;
+    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = 900 + 900 * Math.min(1, t / .03);
+      fase += f / sr;
+      pcm[k] = Math.sin(2 * Math.PI * fase) * Math.min(1, t / .003) * Math.exp(-t * 70) * .22; }
     return {pcm, sr};
   }
   if (tipo === "tos" || tipo === "tosLarga") {
@@ -2551,9 +2590,17 @@ function despertarSonido(){
 }
 // Todos los sonidos van como audio común, igual que las voces: en algunos celulares el sistema
 // de sonido web dice estar activo pero no se escucha.
+// Vía rápida (sonido web, sin demora) donde es confiable: en todos lados menos en iPhones sin iOS 17,
+// donde el modo silencio la apaga. Ahí se usa el audio común (tarda un poquito más pero siempre suena).
+const sonidoRapido = () => !esIOS || !!navigator.audioSession;
 function tono(tipo){
   if (!S.p.sonido) return;
-  tocarComoAudio(tipo);
+  const c = sonidoRapido() ? despertarSonido() : null;
+  if (!c || c.state !== "running") { tocarComoAudio(tipo); return; }
+  try {
+    if (!buffersTono[tipo]) { const {pcm, sr} = pcmTono(tipo); const bf = c.createBuffer(1, pcm.length, sr); bf.copyToChannel(pcm, 0); buffersTono[tipo] = bf; }
+    const src = c.createBufferSource(); src.buffer = buffersTono[tipo]; src.connect(c.destination); src.start(0);
+  } catch { tocarComoAudio(tipo); }
 }
 // En el primer toque se «destraban» los reproductores de cada sonido (el celular exige un toque para cada uno).
 let tonosDestrabados = false;
@@ -2567,6 +2614,7 @@ function destrabarTonos(){
 // Pop suave en cada toque de algo tocable (Felipe tiene sus propios sonidos).
 addEventListener("pointerdown", e => {
   destrabarTonos();
+  if (sonidoRapido()) despertarSonido();
   const t = e.target.closest ? e.target : null;
   if (t && !t.closest(".tito") && t.closest("button, a.btn, .opt, .tok, .node, .txt, [role=button]")) tono("tap");
 }, {capture:true, passive:true});
@@ -2711,6 +2759,7 @@ function vistaCamino(v){
   const pct = Math.min(100, Math.round(xpHoy / meta * 100));
   const actual = L.unidades.findIndex((u, i) => desbloqueada(S.lang, i) && !hecha(S.lang, u.id));
   const bi = bannerInstalar(); if (bi) v.append(bi);
+  tarjetaOfflineInicio(v);
   if (micEstado === "negado" && navigator.mediaDevices?.getUserMedia) {
     const aviso = el("div", {class:"card micpide"},
       el("div", {class:"row"}, el("span", {style:"font-size:34px"}, "🎤"), el("div", {class:"sp"}, el("b", {}, "El micrófono está bloqueado"),
@@ -3286,7 +3335,7 @@ conectarNube();
 setTimeout(() => { for (const tipo of ["tap", "ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927170642";
+const VERSION_APP = "20260927171611";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));
