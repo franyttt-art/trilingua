@@ -218,6 +218,36 @@ details.otros[open] summary{margin-bottom:6px}
 .off-fila.grande{border-top:0;padding-top:0;gap:8px}
 .offline-inicio{display:flex;flex-direction:column;gap:12px;border-color:var(--good)}
 .btn-instalar:disabled{opacity:.7;cursor:default}
+.herr{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.herr-b{display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left;padding:14px;border-radius:18px;border:2px solid var(--line);background:#1E1A34;color:var(--ink);cursor:pointer}
+.herr-b .ic{font-size:26px}.herr-b b{font-size:16px}.herr-b small{color:var(--muted);font-weight:700}
+.item.bloq{opacity:.55}
+.lectura{font-size:19px;line-height:1.75;font-weight:600}
+.frase-lec{cursor:pointer;border-radius:6px}.frase-lec:active{background:var(--act-soft)}
+.dic{display:flex;flex-direction:column;gap:8px}
+.dic-fila{display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:14px;background:#1E1A34;border:1px solid var(--line)}
+.dic-fila .em{font-size:26px}
+.regla-det summary{cursor:pointer;padding:4px 0}
+.regla-det .tabla{display:flex;flex-direction:column;gap:6px}
+.regla-det .tr{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:4px 0}
+.ml{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:28px 16px}
+.ml-t{font:800 32px var(--f-display)}.ml-es{font-size:20px;font-weight:700;color:var(--muted);min-height:26px}
+.test-niv{display:flex;flex-direction:column;gap:12px;border-color:var(--gold)}
+.minis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.mini{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 6px;border-radius:14px;background:var(--surface2);text-align:center}
+.mini span{font-size:22px}.mini b{font-size:22px}.mini small{font-size:11px;color:var(--muted);font-weight:700;line-height:1.2}
+.barras7{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;height:90px;align-items:end}
+.b7{display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end}
+.b7 i{display:block;width:100%;min-height:3px;border-radius:6px;background:linear-gradient(180deg,#FF8A3D,#8C73FF)}
+.b7 small{font-size:11px;color:var(--muted);font-weight:800}
+.hab{display:grid;grid-template-columns:110px 1fr 44px;gap:8px;align-items:center;font-weight:700}
+.logros{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.logro{display:flex;flex-direction:column;gap:2px;padding:10px;border-radius:14px;background:var(--surface2);border:1px solid var(--gold)}
+.logro .ic{font-size:24px}.logro small{color:var(--muted);font-weight:700;font-size:12px}
+.logro.off{border-color:var(--line);filter:grayscale(1);opacity:.5}
+.liga{display:flex;flex-direction:column;gap:6px}
+.liga-f{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:14px;background:var(--surface2);font-weight:700}
+.liga-f.yo{border:2px solid var(--act)}.liga-f .pos{width:28px;text-align:center}
 .link-apk{align-self:center;color:var(--muted);font-weight:700;font-size:14px;text-decoration:underline;padding:4px}
 .pill.descargar[hidden]{display:none}
 .desc-fondo{position:fixed;inset:0;z-index:60;background:rgba(5,4,14,.72);display:flex;align-items:flex-end;justify-content:center;padding:12px;padding-top:calc(12px + env(safe-area-inset-top,0px));overflow:auto}
@@ -1936,7 +1966,7 @@ function molestarFelipe(s, size, cara){
   const globo = s.closest(".tito-row")?.querySelector(".bubble");
   const decirle = txt => { if (globo) { if (!globo.dataset.orig) globo.dataset.orig = globo.textContent; globo.textContent = txt; } else toast("🐦 " + txt); };
   if (toquesFelipe >= 5) {
-    decirle(azar(FELIPE.seVa)); humoFelipe(s, 3); toquesFelipe = 0;
+    decirle(azar(FELIPE.seVa)); humoFelipe(s, 3); toquesFelipe = 0; S.p.echoFelipe = true; guardar(); chequearLogros();
     s.innerHTML = tito(size, "enojado"); s.classList.add("afuera");
     setTimeout(() => { s.classList.remove("afuera"); s.innerHTML = tito(size, cara); decirle(azar(FELIPE.vuelve));
       setTimeout(() => { if (globo?.dataset.orig) globo.textContent = globo.dataset.orig; }, 3500); }, 7000);
@@ -2223,6 +2253,359 @@ function tarjetaOfflineInicio(v){
 }
 addEventListener("offline", () => toast("📴 Sin internet: seguís con lo que tenés guardado."));
 addEventListener("online", () => toast("📶 Volvió internet."));
+
+/* =========================================================================
+   EXTRAS: logros, racha protegida, estadísticas, mis errores, dictado, lecturas,
+   diccionario, gramática, manos libres, test de nivel, recordatorio, liga con amigos
+   y pase de progreso por link. Todo funciona en el dispositivo, sin servidor.
+   ========================================================================= */
+const semanaDe = f => { const d = new Date(f + "T12:00:00"); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return fecha(d); }; // lunes
+const xpSemana = () => { const lunes = semanaDe(hoyStr()); return Object.entries(S.p.dias || {}).filter(([f]) => f >= lunes).reduce((a, [, n]) => a + n, 0); };
+const esperar = ms => new Promise(r => setTimeout(r, ms));
+const totalHechas = () => ["en", "de", "la"].reduce((a, l) => a + Object.keys(S.p.hechas[l] || {}).length, 0);
+const totalPalabras = () => ["en", "de", "la"].reduce((a, l) => a + Object.keys(S.srs[l] || {}).length, 0);
+function sumarMinutos(inicio){
+  const m = Math.min(60, Math.round((Date.now() - inicio) / 60000)); if (m <= 0) return;
+  const f = hoyStr(); S.p.min = {...(S.p.min || {})}; S.p.min[f] = (S.p.min[f] || 0) + m;
+  const ks = Object.keys(S.p.min).sort(); while (ks.length > 60) delete S.p.min[ks.shift()];
+}
+function guardarEstadoAviso(){ // lo lee el service worker para el recordatorio de Android
+  if (!puedeOffline()) return;
+  caches.open("trilingua-estado").then(c => c.put("estado", new Response(JSON.stringify({ultimo:S.p.ultimo, nombre:nombreUsuario, hora:S.p.recHora || 20})))).catch(() => {});
+}
+
+/* ---- Mis errores + estadísticas por habilidad ---- */
+const HABILIDAD = {imagen:"Vocabulario", significado:"Vocabulario", traducir:"Vocabulario", parejas:"Vocabulario", escuchar:"Oído", par:"Oído", dictado:"Oído",
+  escribir:"Escritura", completar:"Gramática", ordenar:"Gramática", dialogo:"Conversación", quiz:"Comprensión"};
+const claveEj = p => p.ej + "|" + JSON.stringify(p.w || p.c || p.d || p.h || p.q || p.par || "").slice(0, 160);
+function registrarRespuesta(l, u, p, ok){
+  const hab = HABILIDAD[p.ej];
+  if (hab) { S.p.stats = {...(S.p.stats || {})}; const x = S.p.stats[hab] || [0, 0]; S.p.stats[hab] = [x[0] + (ok ? 1 : 0), x[1] + 1]; }
+  if (["shadowing", "parejas"].includes(p.ej) || u.tipo === "examen") return;
+  S.p.errores = {en:[], de:[], la:[], ...(S.p.errores || {})};
+  const lista = S.p.errores[l] = [...(S.p.errores[l] || [])], i = lista.findIndex(e => claveEj(e) === claveEj(p));
+  if (!ok && i < 0) { const {reintento, repaso, ...limpio} = p; lista.push(limpio); if (lista.length > 80) lista.shift(); }
+  if (ok && i >= 0 && u.tipo === "practica") lista.splice(i, 1);
+  guardar();
+}
+
+/* ---- Logros ---- */
+const LOGROS = [
+  ["primera", "🐣", "Primer paso", "Completaste tu primera unidad", () => totalHechas() >= 1],
+  ["diez", "📚", "Estudioso", "10 unidades completadas", () => totalHechas() >= 10],
+  ["cincuenta", "🎓", "Medio doctor", "50 unidades completadas", () => totalHechas() >= 50],
+  ["racha3", "🔥", "En llamas", "3 días seguidos", () => (S.p.rachaMax || 0) >= 3],
+  ["racha7", "🔥", "Semana entera", "7 días seguidos", () => (S.p.rachaMax || 0) >= 7],
+  ["racha30", "🌋", "Volcán", "30 días seguidos", () => (S.p.rachaMax || 0) >= 30],
+  ["palabras100", "🧠", "Cien palabras", "100 palabras en tu memoria", () => totalPalabras() >= 100],
+  ["palabras500", "🧠", "Diccionario andante", "500 palabras en tu memoria", () => totalPalabras() >= 500],
+  ["perfecta", "💎", "Perfeccionista", "Una unidad sin errores", () => (S.p.perfectas || 0) >= 1],
+  ["perfectas10", "💎", "Obsesivo", "10 unidades perfectas", () => (S.p.perfectas || 0) >= 10],
+  ["examen", "📜", "Certificado", "Aprobaste tu primer examen", () => Object.values(S.p.cert || {}).some(Boolean)],
+  ["b2", "🏆", "Nivel empresa", "B2 aprobado en un idioma", () => Object.values(S.p.cert || {}).some(c => c === "B2" || c === "C1")],
+  ["trilingue", "🌍", "Trilingüe", "Una unidad en cada idioma", () => ["en", "de", "la"].every(l => Object.keys(S.p.hechas[l] || {}).length)],
+  ["xp1000", "⚡", "Mil puntos", "1000 puntos en total", () => S.p.xp >= 1000],
+  ["buho", "🦉", "Búho", "Estudiaste después de medianoche", () => !!S.p.buho],
+  ["felipe", "🚬", "Molestia oficial", "Hiciste que Felipe se fuera a fumar", () => !!S.p.echoFelipe],
+];
+function chequearLogros(){
+  S.p.logros = {...(S.p.logros || {})};
+  const nuevos = LOGROS.filter(([id, , , , ok]) => !S.p.logros[id] && ok());
+  if (!nuevos.length) return;
+  nuevos.forEach(([id]) => S.p.logros[id] = hoyStr()); guardar();
+  nuevos.forEach(([, ic, t], i) => setTimeout(() => { toast(`🏅 ¡Logro nuevo! ${ic} ${t}`); tono("ok"); }, 1800 + i * 2800));
+}
+
+/* ---- Pantallas auxiliares ---- */
+function subVista(titulo, volver = "practica"){
+  document.body.classList.add("inlesson"); $("#topbar").classList.add("hide");
+  const v = $("#view"); silenciar(); v.replaceChildren(); colorLang(v);
+  v.append(el("div", {class:"lesson-top"}, el("button", {class:"xbtn", "aria-label":"Volver", onclick:() => irA(volver)}, "✕"), el("h3", {class:"sp"}, titulo)));
+  const st = el("div", {class:"stage"}); v.append(st); scrollTo(0, 0);
+  return st;
+}
+function correrPractica(u, pasos){
+  document.body.classList.add("inlesson"); $("#topbar").classList.add("hide");
+  const v = $("#view"); silenciar(); v.replaceChildren(); colorLang(v);
+  correrPasos({tipo:"practica", ic:"🎯", ...u}, S.lang, pasos);
+}
+const unidadesHechas = l => CURSO[l].unidades.filter(u => u.v && hecha(l, u.id));
+const unidadesParaPracticar = l => { const h = unidadesHechas(l); return h.length ? h : CURSO[l].unidades.filter(u => u.v).slice(0, 2); };
+
+function abrirErrores(){
+  const l = S.lang, lista = S.p.errores?.[l] || [];
+  if (!lista.length) { toast("No tenés errores guardados. O sos un genio o no estudiaste 😏"); return; }
+  correrPractica({id:"__errores", t:"Mis errores", ic:"❌"}, [...mezclar(lista).slice(0, 15).map(p => ({...p})), {tipo:"fin"}]);
+}
+function abrirDictado(){
+  const l = S.lang;
+  const frases = mezclar(unidadesParaPracticar(l).flatMap(u => u.h).filter(h => h[1].split(" ").length <= 12)).slice(0, 8);
+  correrPractica({id:"__dictado", t:"Dictado", ic:"🎧"}, [...frases.map(h => ({tipo:"ej", ej:"dictado", h})), {tipo:"fin"}]);
+}
+function nivelAlcanzado(l){ const c = certDe(l); return c ? Math.min(NIVELES.length - 1, NIVELES.indexOf(c) + 1) : 0; }
+function abrirLecturas(){
+  const l = S.lang, st = subVista("📚 Lecturas");
+  st.append(el("div", {class:"tito-row"}, titoEl(56, "feliz"), el("div", {class:"bubble"}, "Leer mucho es lo que más vocabulario te da. Leé sin traducir y después respondé. Si te trabás, tocá la frase para escucharla.")));
+  const max = nivelAlcanzado(l);
+  st.append(el("div", {class:"list"}, ...(LECTURAS[l] || []).map(lec => {
+    const abierta = NIVELES.indexOf(lec.lvl) <= max;
+    return el("button", {class:"item" + (abierta ? "" : " bloq"), onclick:() => abierta ? correrPractica({id:"__lec", t:lec.t, ic:"📚"},
+      [{tipo:"leer", lec}, ...lec.q.map(q => ({tipo:"ej", ej:"quiz", q})), {tipo:"fin"}]) : toast(`Se abre cuando llegues al nivel ${lec.lvl}.`)},
+      el("div", {class:"ic"}, abierta ? "📖" : "🔒"), el("div", {class:"sp"}, el("b", {}, lec.t), el("span", {class:"muted small"}, "Nivel " + lec.lvl + " · 3 preguntas")), "›");
+  })));
+}
+function abrirDiccionario(){
+  const l = S.lang, st = subVista("📖 Diccionario");
+  const us = unidadesHechas(l), palabras = (us.length ? us : CURSO[l].unidades.filter(u => u.v).slice(0, 1)).flatMap(u => u.v);
+  const buscar = el("input", {class:"nombre-in", type:"search", placeholder:`Buscá en ${palabras.length} palabras…`, "aria-label":"Buscar"});
+  const lista = el("div", {class:"dic"});
+  const pintar = () => {
+    const q = normal(buscar.value);
+    const res = palabras.filter(w => !q || normal(w[0]).includes(q) || normal(w[1]).includes(q)).slice(0, 150);
+    lista.replaceChildren(...res.map(w => el("div", {class:"dic-fila"}, el("span", {class:"em"}, w[2]),
+      el("div", {class:"sp"}, el("b", {}, w[0]), el("div", {class:"small muted"}, w[1] + " · «" + w[3] + "»")), botonVoz(w[0], l))),
+      res.length ? null : el("div", {class:"muted"}, "No encontré esa palabra entre las que aprendiste."));
+  };
+  buscar.addEventListener("input", pintar);
+  st.append(el("div", {class:"small muted"}, us.length ? "Todas las palabras de las unidades que completaste." : "Cuando completes unidades, sus palabras aparecen acá."), buscar, lista);
+  pintar();
+}
+function abrirGramatica(){
+  const l = S.lang, st = subVista("📐 Gramática");
+  const us = unidadesHechas(l).filter(u => u.r), lista = us.length ? us : CURSO[l].unidades.filter(u => u.r).slice(0, 2);
+  st.append(el("div", {class:"small muted"}, us.length ? "Las reglas de todas las unidades que completaste. Tocá una para verla." : "Acá aparecen las reglas de las unidades que completes."));
+  st.append(...lista.map(u => el("details", {class:"card regla-det"}, el("summary", {}, el("b", {}, u.r.t), el("span", {class:"small muted"}, " · " + u.t + (u.lvl ? " (" + u.lvl + ")" : ""))),
+    el("p", {}, u.r.x), el("div", {class:"tabla"}, ...u.r.tabla.map(([a, b]) => el("div", {class:"tr"}, el("b", {}, a), el("span", {}, b)))))));
+}
+
+/* ---- Manos libres ---- */
+function vozEspanol(){ cargarVoces(); const es = voces.filter(v => /^es/i.test(v.lang)); return es.find(v => /AR|419|MX|US/.test(v.lang)) || es[0] || null; }
+function decirES(texto){
+  return new Promise(fin => {
+    if (!hayVoz) return setTimeout(fin, 1500);
+    try {
+      const u = new SpeechSynthesisUtterance(texto.replace(/[«»()]/g, " ")); const v = vozEspanol();
+      u.lang = v ? v.lang : "es-AR"; if (v) u.voice = v; u.rate = 1;
+      u.onend = fin; u.onerror = fin; vozRef = u; speechSynthesis.speak(u); setTimeout(fin, 6000);
+    } catch { fin(); }
+  });
+}
+async function abrirManosLibres(){
+  const l = S.lang, st = subVista("🚶 Manos libres");
+  const cartas = Object.values(S.srs[l] || {}).map(c => [c.t, c.es]);
+  const frases = unidadesHechas(l).flatMap(u => u.h.map(h => [h[1], h[2], h[0]]));
+  let cola = mezclar([...cartas, ...frases]);
+  if (!cola.length) cola = mezclar(CURSO[l].unidades.filter(u => u.v).slice(0, 2).flatMap(u => u.v.map(w => [w[0], w[1]])));
+  const tgt = el("div", {class:"ml-t"}), es = el("div", {class:"ml-es"}), cuenta = el("div", {class:"small muted"});
+  let pausa = false;
+  const btn = el("button", {class:"btn big", onclick:() => { pausa = !pausa; btn.textContent = pausa ? "▶️ Seguir" : "⏸️ Pausar"; }}, "⏸️ Pausar");
+  st.append(el("div", {class:"tip"}, "Poné los auriculares: te digo la palabra en " + CURSO[l].nombre.toLowerCase() + ", la traducción y otra vez la palabra. Repetila en voz alta. Dejá la pantalla prendida: si se bloquea, se corta."),
+    el("div", {class:"card ml"}, tgt, es, cuenta), btn);
+  let bloqueo = null;
+  try { bloqueo = await navigator.wakeLock?.request("screen"); } catch {}
+  const turno = turnoAudio;
+  for (let i = 0; turno === turnoAudio; i = (i + 1) % cola.length) {
+    while (pausa && turno === turnoAudio) await esperar(300);
+    if (turno !== turnoAudio) break;
+    const [t, trad, q] = cola[i];
+    tgt.textContent = t; es.textContent = ""; cuenta.textContent = `${i + 1} de ${cola.length}`;
+    await decir(t, l, false, q); if (turno !== turnoAudio) break;
+    await esperar(700); es.textContent = trad; await decirES(trad); if (turno !== turnoAudio) break;
+    await esperar(600); await decir(t, l, false, q); await esperar(1800);
+  }
+  try { bloqueo?.release(); } catch {}
+}
+
+/* ---- Test de nivel ---- */
+function tarjetaTestNivel(v){
+  const l = S.lang;
+  if (Object.keys(S.p.hechas[l] || {}).length || S.p.testHecho?.[l]) return;
+  v.append(el("div", {class:"card test-niv"}, el("div", {class:"row"}, el("span", {style:"font-size:30px"}, "🎯"),
+    el("div", {class:"sp"}, el("b", {}, `¿Ya sabés algo de ${CURSO[l].nombre.toLowerCase()}?`), el("div", {class:"small muted"}, "Hacé el test de nivel (2 minutos) y empezá donde te corresponde."))),
+    el("div", {class:"row"}, el("button", {class:"btn pri sp", onclick:abrirTestNivel}, "Hacer el test"),
+      el("button", {class:"btn", onclick:() => { S.p.testHecho = {...(S.p.testHecho || {}), [l]:true}; guardar(); render(); }}, "Arranco de cero"))));
+}
+function abrirTestNivel(){
+  const l = S.lang, niveles = ["A1", "A2", "B1", "B2"], aprobados = [];
+  const st = subVista("🎯 Test de nivel", "camino");
+  let ni = 0, preguntas = [], k = 0, bienNivel = 0;
+  const cargar = () => { preguntas = mezclar(CURSO[l].unidades.filter(u => u.c && (u.lvl || "A1") === niveles[ni]).flatMap(u => u.c)).slice(0, 5); k = 0; bienNivel = 0; mostrarP(); };
+  const mostrarP = () => {
+    const [frase, ops] = preguntas[k];
+    st.replaceChildren(el("div", {class:"pbar"}, el("i", {style:`width:${(ni * 5 + k) / (niveles.length * 5) * 100}%`})),
+      el("div", {class:"eyebrow"}, `Nivel ${niveles[ni]} · pregunta ${k + 1} de 5`), el("div", {class:"prompt"}, frase.replace("___", "_____")),
+      el("div", {class:"opts"}, ...mezclar(ops).map(o => el("button", {class:"opt", onclick:() => responder(o === ops[0])}, o))),
+      el("div", {class:"small muted"}, "Si no sabés, elegí cualquiera: el test se adapta."));
+  };
+  const responder = ok => { if (ok) bienNivel++; k++; if (k < preguntas.length) return mostrarP();
+    if (bienNivel >= 4) { aprobados.push(niveles[ni]); ni++; if (ni < niveles.length) return cargar(); } terminar(); };
+  const terminar = () => {
+    S.p.testHecho = {...(S.p.testHecho || {}), [l]:true};
+    const alto = aprobados[aprobados.length - 1];
+    if (alto) {
+      CURSO[l].unidades.forEach(u => { if (aprobados.includes(u.lvl || "A1")) S.p.hechas[l][u.id] = true; });
+      const prev = certDe(l); if (!prev || NIVELES.indexOf(alto) > NIVELES.indexOf(prev)) S.p.cert = {...(S.p.cert || {}), [l]:alto};
+    }
+    guardar(); tono("fin"); chequearLogros();
+    st.replaceChildren(el("div", {class:"stage celebrate"}, titoEl(120, alto ? "contento" : "feliz", "happy"),
+      el("h1", {}, alto ? `Tu nivel: ${alto} ✓` : "Arrancás desde el principio"),
+      el("div", {class:"bubble", style:"text-align:left"}, alto
+        ? `Te salteé todo el ${aprobados.join(" y ")}. Empezás en el ${NIVELES[NIVELES.indexOf(alto) + 1] || alto}. No te agrandes: si ves que te cuesta, volvé a las unidades anteriores, que siguen ahí.`
+        : "Desde cero, como yo con cada relación. Tranqui: en unas semanas vas a estar respondiendo este test sin pestañear."),
+      el("button", {class:"btn pri big", onclick:() => irA("camino")}, "Ir al camino")));
+  };
+  cargar();
+}
+
+/* ---- Recordatorio diario ---- */
+function icsRecordatorio(hora){
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  const f = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
+  const url = URL_APP || location.href.split("#")[0];
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Trilingua//ES", "BEGIN:VEVENT", "UID:trilingua-recordatorio@trilingua",
+    "DTSTAMP:" + f + "T000000Z", "DTSTART:" + f + "T" + String(hora).padStart(2, "0") + "0000", "DURATION:PT15M", "RRULE:FREQ=DAILY",
+    "SUMMARY:🐦 Felipe: hora de estudiar", "DESCRIPTION:Tu unidad de hoy te espera. " + url, "URL:" + url,
+    "BEGIN:VALARM", "TRIGGER:PT0M", "ACTION:DISPLAY", "DESCRIPTION:Felipe te espera. No le hagas lo que le hizo tu ex.", "END:VALARM",
+    "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+}
+function agregarAlCalendario(){
+  const ics = icsRecordatorio(S.p.recHora || 20);
+  if (esIOS) { location.href = "data:text/calendar;charset=utf-8," + encodeURIComponent(ics); return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([ics], {type:"text/calendar"})); a.download = "trilingua-recordatorio.ics";
+  document.body.append(a); a.click(); a.remove();
+  toast("📅 Abrí el archivo y tocá «Agregar»: te aviso todos los días.");
+}
+async function activarAvisos(){
+  try {
+    const permiso = await Notification.requestPermission();
+    if (permiso !== "granted") { toast("Sin permiso no te puedo avisar. Usá el recordatorio del calendario."); return; }
+    const reg = await navigator.serviceWorker.ready;
+    if (reg.periodicSync) { try { await reg.periodicSync.register("recordatorio", {minInterval:12 * 60 * 60 * 1000}); } catch {} }
+    guardarEstadoAviso(); S.p.avisos = true; guardar();
+    reg.showNotification("Felipe 🐦", {body:"Listo, te voy a avisar si un día no estudiás. Considerate amenazado.", icon:"icon-192.png"});
+    render();
+  } catch { toast("Tu celular no permite avisos acá. Usá el recordatorio del calendario."); }
+}
+function tarjetaRecordatorio(){
+  const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:10px"}, el("h3", {}, "🔔 Recordatorio diario"));
+  const hora = el("select", {"aria-label":"Hora del recordatorio", onchange:e => { S.p.recHora = +e.target.value; guardar(); guardarEstadoAviso(); }},
+    ...Array.from({length:17}, (_, i) => i + 7).map(h => el("option", {value:h, selected:(S.p.recHora || 20) === h}, `A las ${h}:00`)));
+  c.append(el("div", {class:"small muted"}, "Felipe te avisa todos los días a la hora que elijas. Lo agregás una vez y listo."), hora,
+    el("button", {class:"btn", onclick:agregarAlCalendario}, "📅 Agregar al calendario del celular"));
+  if ("Notification" in window && puedeOffline() && !esIOS)
+    c.append(el("button", {class:"btn", onclick:activarAvisos}, Notification.permission === "granted" && S.p.avisos ? "✓ Avisos de Felipe activados" : "🔔 Activar avisos de Felipe"),
+      el("div", {class:"small muted"}, "Con los avisos activados, si un día no estudiaste Felipe te manda una notificación."));
+  return c;
+}
+
+/* ---- Pase de progreso y liga por link (sin servidor) ---- */
+const b64url = u8 => { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode(...u8.subarray(i, i + 8192)); return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+const deB64url = t => { const s = atob(t.replace(/-/g, "+").replace(/_/g, "/")); const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i); return u; };
+async function empaquetar(obj){
+  const txt = new TextEncoder().encode(JSON.stringify(obj));
+  if (window.CompressionStream) { const b = await new Response(new Blob([txt]).stream().pipeThrough(new CompressionStream("deflate-raw"))).arrayBuffer(); return "z" + b64url(new Uint8Array(b)); }
+  return "j" + b64url(txt);
+}
+async function desempaquetar(cod){
+  const datos = deB64url(cod.slice(1));
+  const txt = cod[0] === "z" ? new Uint8Array(await new Response(new Blob([datos]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer()) : datos;
+  return JSON.parse(new TextDecoder().decode(txt));
+}
+const miId = () => S.p.miId || (S.p.miId = Math.random().toString(36).slice(2, 10));
+const entradaLiga = () => ({i:miId(), n:nombreUsuario || "Alguien", x:xpSemana(), r:racha(), s:semanaDe(hoyStr())});
+async function linkProgreso(){ return (URL_APP || location.href.split("#")[0]) + "#p=" + await empaquetar({p:S.p, srs:S.srs, lang:S.lang, n:nombreUsuario}); }
+async function linkLiga(){ return (URL_APP || location.href.split("#")[0]) + "#amigo=" + await empaquetar(entradaLiga()); }
+async function compartirLink(url, texto){
+  try { if (navigator.share) { await navigator.share({title:"Trilingua", text:texto, url}); return; } } catch (e) { if (e && e.name === "AbortError") return; }
+  try { await navigator.clipboard.writeText(url); toast("📋 Link copiado: pegalo en WhatsApp"); } catch { toast("No pude copiar el link en este navegador."); }
+}
+// Procesa un link de progreso o de liga (al abrir la app con el link, o pegándolo en Perfil).
+async function procesarLink(texto){
+  const m = /#(p|amigo)=([A-Za-z0-9_-]+)/.exec(texto || ""); if (!m) { toast("Ese no parece un link de Trilingua."); return false; }
+  try {
+    const d = await desempaquetar(m[2]);
+    if (m[1] === "p") {
+      if (!S.p.xp || (d.p?.xp || 0) >= S.p.xp) { aplicar(d); if (d.n && !nombreUsuario) guardarNombre(d.n); guardar(); toast("✓ Progreso cargado de tu otro dispositivo"); }
+      else toast("Este dispositivo tiene más progreso que el link: no lo reemplacé.");
+    } else if (d.i && d.i !== miId()) {
+      S.p.amigos = {...(S.p.amigos || {})}; const ya = S.p.amigos[d.i]; S.p.amigos[d.i] = d; S.p.mandarPuntaje = true; guardar();
+      toast(ya ? `🏆 Actualicé el puntaje de ${d.n}` : `🏆 ${d.n} se sumó a tu liga. Mandale tu puntaje desde Perfil.`);
+    }
+    return true;
+  } catch { toast("Ese link no es válido o se cortó al copiarlo."); return false; }
+}
+function tarjetaLiga(){
+  const semana = semanaDe(hoyStr()), yo = {...entradaLiga(), yo:true};
+  const filas = [yo, ...Object.values(S.p.amigos || {}).map(a => ({...a, x:a.s === semana ? a.x : 0}))].sort((a, b) => b.x - a.x);
+  const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:10px"}, el("h3", {}, "🏆 Liga semanal con amigos"));
+  if (filas.length === 1) c.append(el("div", {class:"small muted"}, "Invitá amigos: les mandás un link, lo abren y aparecen acá. Cada vez que se manden el link, se actualizan los puntajes. La liga arranca de cero cada lunes."));
+  c.append(el("div", {class:"liga"}, ...filas.map((f, i) => el("div", {class:"liga-f" + (f.yo ? " yo" : "")},
+    el("span", {class:"pos"}, ["🥇", "🥈", "🥉"][i] || (i + 1) + "."), el("b", {class:"sp"}, f.yo ? f.n + " (vos)" : f.n), el("span", {}, "⚡ " + f.x), el("span", {class:"small muted"}, "🔥 " + (f.r || 0))))));
+  if (filas.length > 1) { const ult = filas[filas.length - 1]; c.append(el("div", {class:"bubble small"}, ult.yo
+    ? "Vas último. Hasta yo, que estoy muerto por dentro, sumo más puntos que vos."
+    : `${ult.n} va último. Mandale este mensaje: «Felipe dice que sos una vergüenza para la familia».`)); }
+  c.append(el("button", {class:"btn" + (S.p.mandarPuntaje ? " pri" : ""), onclick:async () => { S.p.mandarPuntaje = false; guardar(); compartirLink(await linkLiga(), `Mi puntaje en Trilingua esta semana: ⚡ ${xpSemana()}. Abrí el link y sumate a mi liga:`); }},
+    S.p.mandarPuntaje ? "📤 Mandales tu puntaje" : "📤 Invitar / mandar mi puntaje"));
+  return c;
+}
+function tarjetaPase(){
+  const caja = el("input", {class:"nombre-in", type:"text", placeholder:"…o pegá acá un link de Trilingua", "aria-label":"Pegar link"});
+  return el("div", {class:"card", style:"display:flex;flex-direction:column;gap:10px"}, el("h3", {}, "🔁 Tu progreso en otro dispositivo"),
+    el("div", {class:"small muted"}, "Te armo un link con tu progreso. Abrilo en el otro celular o en la PC y se carga solo."),
+    el("button", {class:"btn", onclick:async () => compartirLink(await linkProgreso(), "Mi progreso de Trilingua (abrilo en el otro dispositivo):")}, "📤 Mandar mi progreso por link"),
+    el("div", {class:"row", style:"flex-wrap:wrap"}, caja, el("button", {class:"btn", onclick:async () => { if (await procesarLink(caja.value)) render(); }}, "Cargar")));
+}
+
+/* ---- Estadísticas, logros y certificado para compartir ---- */
+function tarjetaEstadisticas(){
+  const l = S.lang, lunes = semanaDe(hoyStr());
+  const minSemana = Object.entries(S.p.min || {}).filter(([f]) => f >= lunes).reduce((a, [, m]) => a + m, 0);
+  const cartas = Object.values(S.srs[l] || {}), dominadas = cartas.filter(c => c.int >= 21).length;
+  const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:12px"}, el("h3", {}, "📊 Tus estadísticas"));
+  const kpi = (e, n, t) => el("div", {class:"mini"}, el("span", {}, e), el("b", {}, n), el("small", {}, t));
+  c.append(el("div", {class:"minis"}, kpi("⏱️", minSemana, "min esta semana"), kpi("🧠", cartas.length, "palabras de " + CURSO[l].nombre.toLowerCase()),
+    kpi("💪", dominadas, "dominadas"), kpi("🔥", Math.max(S.p.rachaMax || 0, racha()), "mejor racha"), kpi("🧊", S.p.protectores || 0, "protectores de racha"), kpi("🏅", Object.keys(S.p.logros || {}).length, "logros")));
+  const dias = []; for (let i = 6; i >= 0; i--) { const f = sumarDias(hoyStr(), -i); dias.push([f, S.p.dias?.[f] || 0]); }
+  const maxD = Math.max(20, ...dias.map(d => d[1]));
+  c.append(el("div", {class:"small muted"}, "Puntos de los últimos 7 días"), el("div", {class:"barras7"}, ...dias.map(([f, n]) =>
+    el("div", {class:"b7"}, el("i", {style:`height:${Math.round(n / maxD * 100)}%`}), el("small", {}, "DLMMJVS"[new Date(f + "T12:00:00").getDay()])))));
+  const habs = Object.entries(S.p.stats || {}).filter(([, [, t]]) => t >= 3);
+  if (habs.length) c.append(el("div", {class:"small muted"}, "Precisión por habilidad"), ...habs.map(([h, [ok, t]]) => { const pct = Math.round(ok / t * 100);
+    return el("div", {class:"hab"}, el("span", {}, h), el("div", {class:"medidor"}, el("i", {style:`width:${pct}%;background:${pct >= 80 ? "var(--good)" : pct >= 60 ? "var(--gold)" : "var(--bad)"}`})), el("b", {}, pct + "%")); }));
+  return c;
+}
+function tarjetaLogros(){
+  const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:12px"}, el("h3", {}, "🏅 Logros"));
+  c.append(el("div", {class:"logros"}, ...LOGROS.map(([id, ic, t, d]) => el("div", {class:"logro" + (S.p.logros?.[id] ? "" : " off"), title:d},
+    el("span", {class:"ic"}, ic), el("b", {}, t), el("small", {}, d)))));
+  const certs = ["en", "de", "la"].filter(l => certDe(l));
+  if (certs.length) c.append(el("div", {class:"small muted"}, "Tus certificados"), ...certs.map(l => el("button", {class:"btn", onclick:() => compartirCertificado(l, certDe(l), S.p.certPct?.[l])},
+    `📤 Certificado ${certDe(l)} de ${CURSO[l].nombre}`)));
+  return c;
+}
+async function compartirCertificado(l, lv, pct){
+  const cv = document.createElement("canvas"); cv.width = 1080; cv.height = 1350; const x = cv.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 0, 1350); g.addColorStop(0, "#1B1740"); g.addColorStop(1, "#0B0A1A"); x.fillStyle = g; x.fillRect(0, 0, 1080, 1350);
+  for (let i = 0; i < 200; i++) { x.fillStyle = `rgba(255,255,255,${Math.random() * .7 + .2})`; x.beginPath(); x.arc(Math.random() * 1080, Math.random() * 1350, Math.random() * 2.2 + .4, 0, 6.3); x.fill(); }
+  x.strokeStyle = "#FFC23A"; x.lineWidth = 8; x.strokeRect(46, 46, 988, 1258); x.lineWidth = 2; x.strokeRect(64, 64, 952, 1222);
+  try { const img = new Image(); img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(tito(340, "contento").replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" ')); await img.decode(); x.drawImage(img, 370, 110, 340, 340); } catch {}
+  x.textAlign = "center";
+  x.fillStyle = "#FFC23A"; x.font = "800 40px 'Baloo 2', system-ui, sans-serif"; x.fillText("CERTIFICADO FELIPE", 540, 520);
+  x.fillStyle = "#FFFFFF"; x.font = "800 110px 'Baloo 2', system-ui, sans-serif"; x.fillText(lv + " aprobado", 540, 660);
+  x.font = "700 56px Nunito, system-ui, sans-serif"; x.fillText(CURSO[l].nombre, 540, 750);
+  x.fillStyle = "#F3F0FF"; x.font = "800 60px Nunito, system-ui, sans-serif"; x.fillText(nombreUsuario || "", 540, 880);
+  x.fillStyle = "#B4ADD6"; x.font = "700 38px Nunito, system-ui, sans-serif";
+  x.fillText((pct ? pct + "% de aciertos · " : "") + new Date().toLocaleDateString("es-AR", {day:"numeric", month:"long", year:"numeric"}), 540, 950);
+  x.font = "italic 700 36px Nunito, system-ui, sans-serif"; x.fillText("«No vale nada legalmente, como mi título de contador.»", 540, 1080); x.fillText("— Felipe, el pijuí", 540, 1130);
+  x.fillStyle = "#8C73FF"; x.font = "800 34px Nunito, system-ui, sans-serif"; x.fillText("Aprendé gratis: franyttt-art.github.io/trilingua", 540, 1245);
+  const blob = await new Promise(r => cv.toBlob(r, "image/png")), nombre = `certificado-${lv}-${l}.png`;
+  const archivo = new File([blob], nombre, {type:"image/png"});
+  try { if (navigator.canShare?.({files:[archivo]})) { await navigator.share({files:[archivo], title:"Mi certificado de Trilingua", text:`Aprobé el ${lv} de ${CURSO[l].nombre} en Trilingua 🎓`}); return; } }
+  catch (e) { if (e && e.name === "AbortError") return; }
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.append(a); a.click(); a.remove();
+  toast("🖼️ Certificado descargado");
+}
+
 function lsGuardar(){ try { localStorage.setItem(LS, JSON.stringify({p:S.p, srs:S.srs, lang:S.lang})); } catch {} }
 function lsLeer(){ try { return JSON.parse(localStorage.getItem(LS) || "null"); } catch { return null; } }
 function aplicar(d){
@@ -2703,12 +3086,21 @@ function confeti(){
 function sumarXp(n){
   const hoy = hoyStr();
   if (S.p.hoy !== hoy) { S.p.hoy = hoy; S.p.xpHoy = 0; }
-  if (S.p.ultimo !== hoy) { S.p.racha = S.p.ultimo === sumarDias(hoy, -1) ? (S.p.racha || 0) + 1 : 1; S.p.ultimo = hoy; }
+  if (S.p.ultimo !== hoy) {
+    const ayer = sumarDias(hoy, -1), anteayer = sumarDias(hoy, -2);
+    if (S.p.ultimo === ayer) S.p.racha = (S.p.racha || 0) + 1;
+    else if (S.p.ultimo === anteayer && (S.p.protectores || 0) > 0) { S.p.protectores--; S.p.racha = (S.p.racha || 0) + 1; setTimeout(() => toast("🧊 Usaste un protector: tu racha sigue viva."), 900); }
+    else S.p.racha = 1;
+    S.p.ultimo = hoy;
+    if (S.p.racha % 7 === 0 && (S.p.protectores || 0) < 2) { S.p.protectores = (S.p.protectores || 0) + 1; setTimeout(() => toast("🧊 ¡Ganaste un protector de racha! Si un día no podés, no la perdés."), 3200); }
+    S.p.rachaMax = Math.max(S.p.rachaMax || 0, S.p.racha);
+  }
+  if (new Date().getHours() < 5) S.p.buho = true;
   S.p.xp += n; S.p.xpHoy += n; S.p.dias[hoy] = (S.p.dias[hoy] || 0) + n;
   const claves = Object.keys(S.p.dias).sort(); while (claves.length > 60) delete S.p.dias[claves.shift()];
-  guardar(); pintarPills();
+  guardar(); pintarPills(); guardarEstadoAviso(); setTimeout(chequearLogros, 1200);
 }
-const racha = () => { const hoy = hoyStr(); return (S.p.ultimo === hoy || S.p.ultimo === sumarDias(hoy, -1)) ? (S.p.racha || 0) : 0; };
+const racha = () => { const hoy = hoyStr(); return (S.p.ultimo === hoy || S.p.ultimo === sumarDias(hoy, -1) || (S.p.ultimo === sumarDias(hoy, -2) && (S.p.protectores || 0) > 0)) ? (S.p.racha || 0) : 0; };
 const hecha = (l, id) => !!S.p.hechas[l]?.[id];
 function desbloqueada(l, i){ const us = CURSO[l].unidades; return i <= 1 || hecha(l, us[i - 1].id); }
 const vencidas = l => { const hoy = hoyStr(); return Object.values(S.srs[l] || {}).filter(c => c.due <= hoy).length; };
@@ -2720,6 +3112,9 @@ const TEXTO_CERT = {
   B2:"Aprobaste el B2. Discutís, negociás, escribís mails formales y entendés casi todo. Es el nivel que piden las empresas. Andá a pedir aumento, yo te cubro con humo.",
   C1:"Aprobaste el C1. Nivel profesional: matices, registro formal, textos complejos. Oficialmente sabés más que yo. Me voy a fumar uno para superar la humillación.",
 };
+// Lecturas por nivel (una por nivel e idioma). Formato: {lvl, t, texto, tr, q:[[pregunta, [correcta, otra, otra]]]}
+const LECTURAS = {"en": [{"lvl": "A1", "t": "My family", "texto": "My name is Tom. I am from London, but I live in Buenos Aires now. I have a small family. My wife is Ana. She is a doctor. We have a son and a daughter. My son is ten and my daughter is seven. We have a dog, too. His name is Max. On Sundays we eat pizza and watch films. I love my family.", "tr": "Me llamo Tom. Soy de Londres, pero ahora vivo en Buenos Aires. Tengo una familia chica. Mi esposa es Ana. Es médica. Tenemos un hijo y una hija. Mi hijo tiene diez años y mi hija siete. También tenemos un perro. Se llama Max. Los domingos comemos pizza y miramos películas. Amo a mi familia.", "q": [["¿Dónde vive Tom ahora?", ["En Buenos Aires", "En Londres", "En Madrid"]], ["¿Qué hace Ana?", ["Es médica", "Es profesora", "Es cocinera"]], ["¿Qué hacen los domingos?", ["Comen pizza y miran películas", "Van a la playa", "Juegan al fútbol"]]]}, {"lvl": "A2", "t": "A strange weekend", "texto": "Last Saturday I wanted to relax, but everything went wrong. In the morning it was raining, so I stayed at home. At noon I tried to cook pasta, but I burned it. Then my phone stopped working. In the evening my friends called me and we went to a small bar near my house. The music was terrible, but we laughed a lot. It was a strange weekend, but I had fun.", "tr": "El sábado pasado quería relajarme, pero todo salió mal. A la mañana llovía, así que me quedé en casa. Al mediodía intenté cocinar pasta, pero se me quemó. Después el celular dejó de funcionar. A la noche me llamaron mis amigos y fuimos a un barcito cerca de casa. La música era horrible, pero nos reímos mucho. Fue un fin de semana raro, pero me divertí.", "q": [["¿Por qué se quedó en casa?", ["Porque llovía", "Porque estaba enfermo", "Porque trabajaba"]], ["¿Qué le pasó a la pasta?", ["Se le quemó", "Estaba fría", "No tenía sal"]], ["¿Cómo terminó el fin de semana?", ["Se divirtió con amigos en un bar", "Durmió todo el día", "Fue al cine solo"]]]}, {"lvl": "B1", "t": "Working from home", "texto": "More and more people have been working from home since 2020. Many of them say they are more productive because they don't waste time travelling. However, working from home also has disadvantages. Some people feel lonely, and it can be hard to stop working at the end of the day. Experts recommend having a fixed schedule, a separate place to work and regular breaks. If companies had clear rules, remote work would be better for everyone.", "tr": "Cada vez más personas trabajan desde casa desde 2020. Muchas dicen que son más productivas porque no pierden tiempo viajando. Sin embargo, trabajar desde casa también tiene desventajas. Algunas personas se sienten solas, y puede costar dejar de trabajar al final del día. Los expertos recomiendan un horario fijo, un lugar aparte para trabajar y pausas regulares. Si las empresas tuvieran reglas claras, el trabajo remoto sería mejor para todos.", "q": [["¿Por qué muchos dicen ser más productivos?", ["No pierden tiempo viajando", "Trabajan menos horas", "Ganan más plata"]], ["¿Qué desventaja se menciona?", ["Sentirse solo", "Gastar más en transporte", "Dormir poco"]], ["¿Qué recomiendan los expertos?", ["Horario fijo, un lugar aparte y pausas", "Trabajar de noche", "No tomar descansos"]]]}, {"lvl": "B2", "t": "The attention economy", "texto": "Apps are designed to keep us scrolling. Every notification, like and endless feed is carefully engineered to capture our attention, which companies then sell to advertisers. Although these tools are free, we pay with our time and focus. Critics argue that users should have more control; for instance, feeds could have a natural end, and notifications could be grouped. Nevertheless, the most effective change may be personal: turning off non-essential alerts can significantly reduce distraction.", "tr": "Las apps están diseñadas para que sigamos deslizando. Cada notificación, cada «me gusta» y cada feed infinito están pensados para capturar nuestra atención, que después las empresas les venden a los anunciantes. Aunque estas herramientas son gratis, pagamos con nuestro tiempo y concentración. Los críticos sostienen que los usuarios deberían tener más control; por ejemplo, los feeds podrían tener un final y las notificaciones podrían agruparse. No obstante, el cambio más efectivo quizás sea personal: apagar las alertas no esenciales puede reducir mucho la distracción.", "q": [["¿Qué les venden las empresas a los anunciantes?", ["Nuestra atención", "Nuestros datos bancarios", "Teléfonos"]], ["¿Cómo «pagamos» las apps gratis?", ["Con tiempo y concentración", "Con dinero", "Con fotos"]], ["¿Cuál puede ser el cambio más efectivo?", ["Apagar las alertas no esenciales", "Cambiar de celular", "Borrar todas las apps"]]]}, {"lvl": "C1", "t": "In praise of boredom", "texto": "Rarely do we allow ourselves to be bored anymore. The moment a queue forms or a conversation stalls, we reach for our phones. Yet boredom, far from being a waste of time, arguably serves a purpose: it signals that our current activity lacks meaning and nudges us towards something more rewarding. Studies suggest that people who are given a dull task beforehand tend to come up with more creative ideas afterwards. What we need, then, is not constant stimulation but the occasional courage to do nothing at all.", "tr": "Rara vez nos permitimos aburrirnos. En cuanto se forma una fila o se estanca una conversación, agarramos el celular. Sin embargo, el aburrimiento, lejos de ser una pérdida de tiempo, podría decirse que cumple una función: indica que lo que hacemos carece de sentido y nos empuja hacia algo más gratificante. Los estudios sugieren que las personas a las que se les da antes una tarea aburrida suelen tener después ideas más creativas. Lo que necesitamos, entonces, no es estimulación constante, sino el coraje ocasional de no hacer nada.", "q": [["¿Qué hacemos apenas se forma una fila?", ["Agarramos el celular", "Leemos un libro", "Hablamos con alguien"]], ["Según el texto, ¿para qué sirve aburrirse?", ["Nos empuja hacia algo con más sentido", "Nos hace rendir más en el trabajo", "No sirve para nada"]], ["¿Qué muestran los estudios?", ["Tras una tarea aburrida surgen ideas más creativas", "Aburrirse enferma", "Los aburridos duermen mejor"]]]}], "de": [{"lvl": "A1", "t": "Meine Stadt", "texto": "Ich heiße Lena und ich wohne in Hamburg. Hamburg ist groß und schön. Ich wohne in einer kleinen Wohnung mit meiner Katze. Ich arbeite in einem Café. Am Morgen trinke ich Kaffee und esse ein Brötchen. Am Abend gehe ich oft an den Hafen. Dort ist es sehr schön. Am Wochenende besuche ich meine Eltern.", "tr": "Me llamo Lena y vivo en Hamburgo. Hamburgo es grande y linda. Vivo en un departamento chico con mi gata. Trabajo en un café. A la mañana tomo café y como un pancito. A la noche voy seguido al puerto. Ahí es muy lindo. El fin de semana visito a mis padres.", "q": [["¿Dónde vive Lena?", ["En Hamburgo", "En Berlín", "En Viena"]], ["¿Dónde trabaja?", ["En un café", "En un hospital", "En una escuela"]], ["¿Qué hace el fin de semana?", ["Visita a sus padres", "Trabaja", "Va al cine"]]]}, {"lvl": "A2", "t": "Der Urlaub", "texto": "Letzten Sommer bin ich mit meinem Freund nach Italien gefahren. Wir haben zwei Wochen in einem kleinen Hotel am Meer gewohnt. Jeden Tag sind wir geschwommen und haben viel Pizza gegessen. Einmal hat es stark geregnet, deshalb sind wir ins Museum gegangen. Am letzten Tag habe ich mein Handy im Restaurant vergessen. Zum Glück hat der Kellner es gefunden. Es war ein toller Urlaub.", "tr": "El verano pasado viajé a Italia con mi novio. Nos quedamos dos semanas en un hotelito frente al mar. Todos los días nadamos y comimos mucha pizza. Una vez llovió muchísimo, por eso fuimos al museo. El último día me olvidé el celular en el restaurante. Por suerte el mozo lo encontró. Fueron unas vacaciones geniales.", "q": [["¿Adónde viajaron?", ["A Italia", "A España", "A Grecia"]], ["¿Qué hicieron el día de lluvia?", ["Fueron al museo", "Durmieron", "Fueron a la playa"]], ["¿Qué pasó el último día?", ["Olvidó el celular en el restaurante", "Perdió el vuelo", "Se enfermó"]]]}, {"lvl": "B1", "t": "Ein neuer Job", "texto": "Als Paula ihren ersten Job in Berlin bekam, war sie sehr nervös. Sie hatte Angst, dass ihr Deutsch nicht gut genug war. Am ersten Tag stellte ihr Chef sie dem Team vor. Die Kollegen waren freundlich und halfen ihr, obwohl sie viele Fragen hatte. Nach drei Monaten sprach sie viel sicherer, weil sie jeden Tag mit anderen reden musste. Heute sagt sie: Wenn man eine Sprache wirklich lernen will, muss man sie benutzen.", "tr": "Cuando Paula consiguió su primer trabajo en Berlín, estaba muy nerviosa. Tenía miedo de que su alemán no fuera suficiente. El primer día su jefe la presentó al equipo. Los compañeros fueron amables y la ayudaron, aunque tenía muchas preguntas. A los tres meses hablaba con mucha más seguridad, porque todos los días tenía que hablar con otros. Hoy dice: si de verdad querés aprender un idioma, tenés que usarlo.", "q": [["¿Por qué estaba nerviosa?", ["Temía que su alemán no alcanzara", "No conocía Berlín", "Llegaba tarde"]], ["¿Cómo eran los compañeros?", ["Amables y la ayudaban", "Antipáticos", "No hablaban con ella"]], ["¿Cuál es su consejo?", ["Usar el idioma todos los días", "Estudiar solo gramática", "Mirar películas"]]]}, {"lvl": "B2", "t": "Das Fahrrad in der Stadt", "texto": "In vielen deutschen Städten wird das Fahrrad immer beliebter. Während es früher vor allem als Freizeitgerät galt, nutzen es heute viele Menschen, um zur Arbeit zu fahren. Die Städte investieren in breitere Radwege, und in manchen Straßen dürfen Autos gar nicht mehr fahren. Kritiker meinen jedoch, dass dadurch der Verkehr in anderen Vierteln zunimmt. Je besser die Infrastruktur ist, desto mehr Menschen steigen um. Das zeigen zumindest die Erfahrungen aus Kopenhagen.", "tr": "En muchas ciudades alemanas la bicicleta es cada vez más popular. Antes se la veía sobre todo como algo para el tiempo libre; hoy mucha gente la usa para ir a trabajar. Las ciudades invierten en ciclovías más anchas, y en algunas calles los autos ya no pueden circular. Sin embargo, los críticos opinan que así aumenta el tránsito en otros barrios. Cuanto mejor es la infraestructura, más gente se pasa a la bici. Al menos eso muestran las experiencias de Copenhague.", "q": [["¿Para qué usan hoy muchos la bici?", ["Para ir a trabajar", "Solo los fines de semana", "Para hacer deporte"]], ["¿Qué critican algunos?", ["Que aumenta el tránsito en otros barrios", "Que las bicis son caras", "Que hay pocas calles"]], ["¿Qué muestra Copenhague?", ["Mejor infraestructura, más ciclistas", "Que la bici no funciona", "Que hacen falta más autos"]]]}, {"lvl": "C1", "t": "Die Kunst des Weglassens", "texto": "Dem Architekten Ludwig Mies van der Rohe wird der Satz „Weniger ist mehr“ zugeschrieben. Gemeint ist, dass ein Werk nicht durch das Hinzufügen, sondern durch das bewusste Weglassen an Klarheit gewinnt. Was in der Architektur gilt, lässt sich auch auf das Schreiben übertragen: Ein Text, der auf überflüssige Adjektive verzichtet, wirkt präziser. Allerdings sei Einfachheit, so betonen Kritiker, nicht mit Oberflächlichkeit zu verwechseln; sie sei vielmehr das Ergebnis harter Arbeit.", "tr": "Al arquitecto Ludwig Mies van der Rohe se le atribuye la frase «menos es más». Significa que una obra gana claridad no agregando, sino omitiendo a conciencia. Lo que vale para la arquitectura también se aplica a la escritura: un texto que prescinde de adjetivos superfluos resulta más preciso. Sin embargo, subrayan los críticos, la simplicidad no debe confundirse con superficialidad: es más bien el resultado de mucho trabajo.", "q": [["¿Qué significa «menos es más» según el texto?", ["Omitir a conciencia da claridad", "Trabajar menos", "Gastar menos"]], ["¿A qué más se aplica?", ["A la escritura", "A la cocina", "Al deporte"]], ["¿Qué advierten los críticos?", ["Simplicidad no es superficialidad", "Que la frase es falsa", "Que Mies nunca la dijo"]]]}], "la": [{"lvl": "A1", "t": "Familia Rōmāna", "texto": "Mārcus est puer Rōmānus. In urbe Rōmā habitat. Pater Mārcī est senātor; māter est Iūlia. Mārcus sorōrem habet, Claudiam. Familia in magnā domō habitat. Mārcus scholam amat, sed Claudia nōn amat. Post scholam Mārcus in forō ambulat et amīcōs videt. Canis familiae est Argus.", "tr": "Marco es un chico romano. Vive en la ciudad de Roma. El padre de Marco es senador; la madre es Julia. Marco tiene una hermana, Claudia. La familia vive en una casa grande. Marco ama la escuela, pero Claudia no. Después de la escuela, Marco pasea por el foro y ve a sus amigos. El perro de la familia es Argos.", "q": [["¿Dónde vive Marco?", ["En Roma", "En Atenas", "En Cartago"]], ["¿Qué es el padre?", ["Senador", "Soldado", "Mercader"]], ["¿Cómo se llama el perro?", ["Argos", "Claudia", "Julia"]]]}, {"lvl": "A2", "t": "Hannibal", "texto": "Ōlim Hannibal, dux Carthāginiēnsis, cum magnō exercitū et elephantīs Alpēs trānsiit. Multī mīlitēs et elephantī in montibus periērunt. Tamen Hannibal in Ītaliam vēnit et Rōmānōs multīs proeliīs vīcit. Rōmānī valdē timēbant. Sed Hannibal urbem Rōmam numquam cēpit. Posteā Scīpiō Carthāginem oppugnāvit et Hannibalem in Āfricā vīcit.", "tr": "Una vez Aníbal, general cartaginés, cruzó los Alpes con un gran ejército y elefantes. Muchos soldados y elefantes murieron en las montañas. Sin embargo, Aníbal llegó a Italia y venció a los romanos en muchas batallas. Los romanos tenían mucho miedo. Pero Aníbal nunca tomó la ciudad de Roma. Después Escipión atacó Cartago y venció a Aníbal en África.", "q": [["¿Qué cruzó Aníbal?", ["Los Alpes", "El Nilo", "El Rin"]], ["¿Tomó Roma?", ["No, nunca", "Sí", "Sí, dos veces"]], ["¿Quién lo venció en África?", ["Escipión", "César", "Cicerón"]]]}, {"lvl": "B1", "t": "Dē Archimēde", "texto": "Cum Syrācūsae ā Rōmānīs obsidērentur, Archimēdēs, vir doctissimus, māchinās mīrās fēcit quibus nāvēs hostium dēlēbantur. Tandem urbe captā, mīles Rōmānus in domum eius intrāvit. Archimēdēs, figūrās in pulvere dēscrībēns, dīxit: «Nōlī turbāre circulōs meōs!» Mīles autem, īrātus, eum necāvit. Mārcellus, dux Rōmānus, mortem virī tam sapientis dolēbat.", "tr": "Mientras Siracusa era sitiada por los romanos, Arquímedes, un hombre sapientísimo, construyó máquinas asombrosas con las que se destruían las naves enemigas. Finalmente, tomada la ciudad, un soldado romano entró en su casa. Arquímedes, que dibujaba figuras en el polvo, dijo: «¡No molestes mis círculos!». Pero el soldado, enojado, lo mató. Marcelo, el general romano, lamentó la muerte de un hombre tan sabio.", "q": [["¿Qué construyó Arquímedes?", ["Máquinas contra las naves", "Un templo", "Una muralla"]], ["¿Qué le dijo al soldado?", ["Que no molestara sus círculos", "Que lo salvara", "Que se rendía"]], ["¿Qué sintió Marcelo?", ["Dolor por su muerte", "Alegría", "Nada"]]]}, {"lvl": "B2", "t": "Plīnius et Vesuvius", "texto": "Plīnius Minor avunculī suī mortem Tacitō nārrāvit. Nūbēs ingēns, formā pīnūs, ē monte Vesuviō surgēbat. Avunculus, quī classī praeerat, ut propius spectāret et amīcōs servāret, nāvēs dēdūcī iussit. Cum ad lītus advēnisset, cinis iam dēnsior incidēbat et saxa cadēbant. Nihilōminus, ut timōrem suōrum lēnīret, tranquillus lavātus cēnāvit. Posterō diē, fūmō oppressus, periit.", "tr": "Plinio el Joven le contó a Tácito la muerte de su tío. Una nube enorme, con forma de pino, surgía del monte Vesubio. Su tío, que comandaba la flota, para verla de cerca y salvar a sus amigos, ordenó botar las naves. Cuando llegó a la costa, ya caía ceniza más densa y caían piedras. Aun así, para calmar el miedo de los suyos, se bañó y cenó tranquilo. Al día siguiente, sofocado por el humo, murió.", "q": [["¿Qué forma tenía la nube?", ["De pino", "De caballo", "De león"]], ["¿Por qué zarpó el tío?", ["Para ver de cerca y salvar amigos", "Para huir", "Para pescar"]], ["¿Cómo murió?", ["Sofocado por el humo", "En una batalla", "De viejo"]]]}, {"lvl": "C1", "t": "Seneca: dē brevitāte vītae", "texto": "Nōn exiguum temporis habēmus, sed multum perdidimus. Satis longa vīta et in maximārum rērum cōnsummātiōnem large data est, sī tōta bene collocārētur; sed ubi per luxum ac neglegentiam diffluit, ubi nūllī bonae reī impenditur, ultimā dēmum necessitāte cōgente, quam īre nōn intellēximus, trānsīsse sentīmus.", "tr": "No tenemos poco tiempo, sino que perdimos mucho. La vida es bastante larga y se nos dio con generosidad para realizar las cosas más grandes, si se la empleara bien toda; pero cuando se escurre en el lujo y el descuido, cuando no se gasta en nada bueno, recién cuando nos apremia la necesidad final sentimos que pasó esa vida que no entendimos que se iba.", "q": [["¿Qué dice Séneca del tiempo?", ["No es poco: desperdiciamos mucho", "Es muy corto", "No existe"]], ["¿Cuándo sería larga la vida?", ["Si se la usara bien entera", "Si viviéramos cien años", "Si no trabajáramos"]], ["¿Cuándo nos damos cuenta de que pasó?", ["Al final, forzados por la necesidad", "Nunca", "En la juventud"]]]}]};
+// fin LECTURAS
 const certDe = l => { const c = S.p.cert?.[l]; return c === true ? "A1" : c || null; };
 function nivel(l){
   const cert = certDe(l);
@@ -2805,6 +3200,7 @@ function vistaCamino(v){
   const actual = L.unidades.findIndex((u, i) => desbloqueada(S.lang, i) && !hecha(S.lang, u.id));
   const bi = bannerInstalar(); if (bi) v.append(bi);
   tarjetaOfflineInicio(v);
+  tarjetaTestNivel(v);
   if (micEstado === "negado" && navigator.mediaDevices?.getUserMedia) {
     const aviso = el("div", {class:"card micpide"},
       el("div", {class:"row"}, el("span", {style:"font-size:34px"}, "🎤"), el("div", {class:"sp"}, el("b", {}, "El micrófono está bloqueado"),
@@ -2871,6 +3267,8 @@ function construirLeccion(u, l){
   const frasesOrdenar = mezclar(u.h.filter(h => { const n = h[1].split(" ").length; return n >= 3 && n <= 8; })).slice(0, 2);
   frasesOrdenar.forEach(h => pasos.push({tipo:"ej", ej:"ordenar", h}));
   mezclar(u.h).slice(0, 2).forEach(h => pasos.push({tipo:"ej", ej:"shadowing", h}));
+  const paraDictar = mezclar(u.h.filter(h => h[1].split(" ").length <= 10))[0];
+  if (paraDictar) pasos.push({tipo:"ej", ej:"dictado", h:paraDictar});
   u.d.forEach((d, i) => pasos.push({tipo:"ej", ej:"dialogo", d, i}));
   pasos.push({tipo:"fin"});
   return pasos;
@@ -2893,7 +3291,7 @@ function construirExamen(l, lvl){
 function correrPasos(u, l, pasos){
   const v = $("#view");
   let idx = 0, combo = 0, mejorCombo = 0, bien = 0, total = 0, errores = [];
-  const reintentos = [];
+  const reintentos = [], inicio = Date.now();
   const cuenta = pasos.filter(p => p.tipo === "ej").length;
   const top = () => {
     const hechos = pasos.slice(0, idx).filter(p => p.tipo !== "intro").length, tot = pasos.length - 1;
@@ -2917,7 +3315,7 @@ function correrPasos(u, l, pasos){
     v.replaceChildren(top());
     const stage = el("div", {class:"stage"}); v.append(stage);
     scrollTo(0, 0);
-    ({intro, historia, palabra, regla, sonido, ej:ejercicio, fin})[paso.tipo](paso, stage);
+    ({intro, historia, palabra, regla, sonido, leer, ej:ejercicio, fin})[paso.tipo](paso, stage);
   }
   /* --- pantallas de contenido --- */
   function intro(p, st){
@@ -2937,6 +3335,15 @@ function correrPasos(u, l, pasos){
         ? "Antes de hablar, entrenemos el oído. Vas a aprender los sonidos que no existen en español. Es lo que más ayuda a que te entiendan."
         : `Hoy vas a: escuchar una conversación real, aprender ${u.v.length} palabras clave, entender una regla y practicarla hasta que salga sola. Son unos 10 minutos.`),
       el("button", {class:"btn pri big", onclick:siguiente}, "¡Vamos!"));
+  }
+  function leer(p, st){
+    const lec = p.lec, frases = lec.texto.split(/(?<=[.!?])\s+/);
+    const tr = el("div", {class:"card small hide", style:"line-height:1.6"}, lec.tr);
+    st.append(el("div", {class:"eyebrow"}, "📚 Lectura · nivel " + lec.lvl), el("h2", {}, lec.t),
+      el("div", {class:"hint-tap"}, "Leela entera sin traducir. Tocá una frase para escucharla."),
+      el("div", {class:"lectura"}, ...frases.map(f => el("span", {class:"frase-lec", onclick:() => decir(f, l)}, f + " "))),
+      el("button", {class:"btn link", onclick:() => tr.classList.toggle("hide")}, "Ver / ocultar traducción"), tr,
+      el("button", {class:"btn pri big", onclick:siguiente}, "Responder las preguntas"));
   }
   function historia(p, st){
     st.append(el("div", {class:"eyebrow"}, "📖 Paso 1 · Escuchá la conversación"), el("h2", {}, "Tocá cada frase para ver qué significa"));
@@ -3001,6 +3408,7 @@ function correrPasos(u, l, pasos){
       if (listo) return; listo = true;
       if (ok) { bien++; combo++; mejorCombo = Math.max(mejorCombo, combo); tono("ok"); }
       else { combo = 0; tono("no"); errores.push(correcta); if (!p.reintento && p.ej !== "shadowing" && u.tipo !== "examen") reintentos.push({...p, reintento:true}); }
+      registrarRespuesta(l, u, p, ok);
       if (p.w && p.repaso) { const id = Object.keys(S.srs[l]).find(k => S.srs[l][k].t === p.w[0]); if (id) calificar(l, id, ok); }
       const h = el("div", {class:"sheet " + (ok ? "ok" : "no")},
         el("div", {class:"row"}, titoEl(52, ok ? "contento" : "triste", ok ? "happy" : "sad"),
@@ -3114,6 +3522,19 @@ function correrPasos(u, l, pasos){
         el("div", {class:"row", style:"justify-content:center"}, el("button", {class:"say", style:"width:88px;height:88px;font-size:38px", onclick:() => decir(cual, l)}, "🔊"), botonVoz(cual, l, true)),
         opcionesDe(mezclar([a, b]), o => [o], o => o === cual, cual, `Estas dos palabras se diferencian en un solo sonido: son «pares mínimos», el mejor entrenamiento para el oído.`, true));
       setTimeout(() => decir(cual, l), 200);
+    } else if (p.ej === "dictado") {
+      const [q, t, es] = p.h;
+      const inp = el("textarea", {class:"answer", rows:"2", autocomplete:"off", autocapitalize:"off", spellcheck:"false", placeholder:"Escribí lo que escuchás…"});
+      const comprobar = () => {
+        if (listo || !inp.value.trim()) return;
+        const meta = normal(t).split(" ").filter(Boolean), dicho = normal(inp.value).split(" ");
+        const pct = meta.filter(w => dicho.some(d => d === w || (w.length > 3 && distancia(d, w) <= 1))).length / meta.length;
+        cerrar(pct >= .8, t, pct >= .8 && pct < 1 ? `Casi perfecto (${Math.round(pct * 100)}%). Era: «${t}» (${es})` : "Significa: " + es);
+      };
+      st.append(el("div", {class:"eyebrow"}, "🎧 Dictado"), titulo("Escuchá y escribí la frase"),
+        el("div", {class:"row", style:"justify-content:center"}, el("button", {class:"say", style:"width:88px;height:88px;font-size:38px", onclick:() => decir(t, l, false, q)}, "🔊"), botonVoz(t, l, true, q)),
+        inp, el("div", {class:"row"}, el("button", {class:"btn pri sp", onclick:comprobar}, "Comprobar"), el("button", {class:"btn", onclick:() => cerrar(false, t, "Significa: " + es)}, "No me sale")));
+      setTimeout(() => decir(t, l, false, q), 250);
     } else if (p.ej === "quiz") {
       const [preg, ops] = p.q;
       st.append(el("div", {class:"eyebrow"}, "🧠 Pregunta"), titulo(preg), opcionesDe(mezclar(ops), o => [o], o => o === ops[0], ops[0], null));
@@ -3126,11 +3547,20 @@ function correrPasos(u, l, pasos){
       return mostrar();
     }
     const precision = total ? Math.round(bien / total * 100) : 100;
+    sumarMinutos(inicio);
+    if (u.tipo === "practica") {
+      const xpP = 5 + bien * 2; sumarXp(xpP); tono("fin"); st.classList.add("celebrate");
+      st.append(titoEl(120, "contento", "happy"), el("h1", {}, u.ic + " " + u.t + " ✓"),
+        el("div", {class:"bubble", style:"text-align:left"}, `${bien} de ${total} bien (${precision}%). +${xpP} ⚡ ` + conNombre(azar(FELIPE.fin), .5)),
+        el("button", {class:"btn pri big", onclick:() => irA("practica")}, "Continuar"));
+      return;
+    }
     if (u.tipo === "examen") {
       st.classList.add("celebrate");
       if (precision >= 80) {
         const lv = u.lvl || "A1", previo = certDe(l);
         if (!previo || NIVELES.indexOf(lv) > NIVELES.indexOf(previo)) S.p.cert = {...(S.p.cert || {}), [l]:lv};
+        S.p.certPct = {...(S.p.certPct || {}), [l]:precision};
         S.p.hechas[l][u.id] = true;
         sumarXp(100); tono("fin"); confeti();
         st.append(titoEl(130, "contento", "happy"),
@@ -3138,6 +3568,7 @@ function correrPasos(u, l, pasos){
             el("div", {style:"font-weight:800;font-size:18px"}, CURSO[l].nombre + " · " + precision + "% de aciertos"),
             el("div", {class:"muted small"}, new Date().toLocaleDateString("es-AR", {day:"numeric", month:"long", year:"numeric"}))),
           el("div", {class:"bubble", style:"text-align:left"}, (TEXTO_CERT[u.lvl || "A1"] || TEXTO_CERT.A1) + " +100 ⚡"),
+          el("button", {class:"btn big", onclick:() => compartirCertificado(l, lv, precision)}, "📤 Compartir certificado"),
           el("button", {class:"btn pri big", onclick:() => irA("camino")}, "Continuar"));
       } else {
         sumarXp(10); tono("no");
@@ -3253,6 +3684,15 @@ function vistaPractica(v){
   v.append(el("div", {class:"tito-row"}, titoEl(64, "feliz"), el("div", {class:"bubble"},
     hechas.length ? "Repetí conversaciones hasta que te salgan sin pensar. Esa fluidez es la que vas a usar en la vida real."
       : "Cuando completes tu primera unidad, sus conversaciones aparecen acá para practicarlas cuando quieras.")));
+  const herr = (ic, t, sub, fn) => el("button", {class:"herr-b", onclick:fn}, el("span", {class:"ic"}, ic), el("b", {}, t), el("small", {}, sub));
+  const nErr = (S.p.errores?.[S.lang] || []).length;
+  v.append(el("div", {class:"herr"},
+    herr("❌", "Mis errores", nErr ? `${nErr} para reforzar` : "Nada por ahora", abrirErrores),
+    herr("🎧", "Dictado", "Escuchá y escribí", abrirDictado),
+    herr("📚", "Lecturas", "Textos por nivel", abrirLecturas),
+    herr("🚶", "Manos libres", "Repaso solo con audio", abrirManosLibres),
+    herr("📖", "Diccionario", "Buscá tus palabras", abrirDiccionario),
+    herr("📐", "Gramática", "Todas tus reglas", abrirGramatica)));
   if (hechas.length) {
     v.append(el("h3", {}, "💬 Conversaciones"));
     v.append(el("div", {class:"list"}, ...hechas.map(u => el("button", {class:"item", onclick:() => practicarDialogo(u)},
@@ -3320,6 +3760,7 @@ function vistaPerfil(v){
     el("label", {for:"toque", style:"font-weight:800;display:flex;flex-direction:column;gap:6px"}, "Sonido al tocar botones (elegí y escuchalo)", selToque),
     el("div", {class:"small muted"}, "🐦 Felipe es un pijuí de ficción con muy malas decisiones de vida. Él fuma; vos no le copies eso. 🚭"),
     el("div", {class:"small muted"}, Store.modo === "nube" ? "☁️ Tu progreso se guarda en tu cuenta y se sincroniza entre el celular y la PC." : "📱 Tu progreso se guarda en este navegador.")));
+  v.append(tarjetaEstadisticas(), tarjetaLogros(), tarjetaLiga(), tarjetaRecordatorio(), tarjetaPase());
   v.append(tarjetaInstalar());
   v.append(tarjetaOffline());
   v.append(el("div", {class:"card method"}, el("h2", {}, "🧪 Por qué funciona Trilingua"),
@@ -3379,11 +3820,13 @@ document.querySelector("nav.tabs").addEventListener("click", e => { const b = e.
 aplicar(lsLeer());
 render();
 conectarNube();
+if (/#(p|amigo)=/.test(location.hash)) procesarLink(location.hash).then(ok => { if (ok) { history.replaceState(null, "", location.pathname + location.search); render(); } });
+guardarEstadoAviso();
 // Precarga: los tonos y la voz de Felipe listos para sonar sin demora.
 setTimeout(() => { if (toqueElegido() !== "ninguno") { const t = "tap:" + toqueElegido(); poolTono[t] || (poolTono[t] = Array.from({length:3}, () => { const a = new Audio(urlTono(t)); a.preload = "auto"; a.load(); return a; })); } for (const tipo of ["ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927173102";
+const VERSION_APP = "20260927175255";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));

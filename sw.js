@@ -1,10 +1,10 @@
-const CACHE = "trilingua-20260927173102";
+const CACHE = "trilingua-20260927175255";
 const AUDIO = "trilingua-audio", FUENTES = "trilingua-fuentes";
 const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "sonidos/cristal.wav", "sonidos/gota.wav", "sonidos/interruptor.wav", "sonidos/pop.wav", "sonidos/pop2.wav", "sonidos/seleccion.wav"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
   // Los audios y las fuentes se conservan entre versiones (no cambian); solo se renueva el cache de la página.
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== AUDIO && k !== FUENTES).map(k => caches.delete(k)))));
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== AUDIO && k !== FUENTES && k !== "trilingua-estado").map(k => caches.delete(k)))));
   self.clients.claim();
 });
 
@@ -38,6 +38,22 @@ async function pagina(pedido){
   try { return (await Promise.race([red, tiempo])) || guardada; } catch { return guardada; }
 }
 
+// Recordatorio diario sin servidor (Android, app instalada): el navegador despierta al service worker
+// cada tanto; si hoy no estudiaste, Felipe te manda una notificación.
+self.addEventListener("periodicsync", e => { if (e.tag === "recordatorio") e.waitUntil(recordar()); });
+async function recordar(){
+  const c = await caches.open("trilingua-estado"), r = await c.match("estado"), est = r ? await r.json() : {};
+  const d = new Date(), hoy = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  if (est.ultimo === hoy || d.getHours() < 12) return;
+  const frases = ["Hoy no estudiaste. Yo tampoco hice nada, pero yo soy un pájaro.", "Tu racha está por morir. Como mis pulmones.",
+    "¿Te olvidaste de mí? Mi ex también. Hacé tu unidad.", "Cinco minutos. Menos de lo que tardo en fumarme uno."];
+  return self.registration.showNotification("Felipe 🐦", {body:(est.nombre ? est.nombre + ": " : "") + frases[Math.floor(Math.random() * frases.length)],
+    icon:"icon-192.png", badge:"icon-192.png", tag:"recordatorio"});
+}
+self.addEventListener("notificationclick", e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({type:"window"}).then(ws => ws.length ? ws[0].focus() : self.clients.openWindow("./")));
+});
 self.addEventListener("fetch", e => {
   const r = e.request;
   if (r.method !== "GET") return;
