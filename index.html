@@ -2589,7 +2589,7 @@ function pcmTono(tipo){
   return {pcm, sr};
 }
 // Sonidos para el toque de botones (se eligen en Perfil).
-const TOQUES = [["gota", "💧 Gota"], ["madera", "🪵 Madera"], ["campana", "🔔 Campanita"], ["burbuja", "🫧 Burbuja"], ["tic", "⌨️ Tic"], ["ninguno", "🔇 Ninguno"]];
+const TOQUES = [["duolingo", "🦉 Estilo Duolingo"], ["gota", "💧 Gota"], ["madera", "🪵 Madera"], ["campana", "🔔 Campanita"], ["burbuja", "🫧 Burbuja"], ["tic", "⌨️ Tic"], ["ninguno", "🔇 Ninguno"]];
 function pcmToque(nombre, sr, lleno){
   let fase = 0;
   const barrido = (dur, f0, f1, dec, vol, curva = t => t) => { // tono que cambia de f0 a f1
@@ -2598,6 +2598,15 @@ function pcmToque(nombre, sr, lleno){
       fase += f / sr; pcm[k] = Math.sin(2 * Math.PI * fase) * Math.min(1, t / .002) * Math.exp(-t * dec) * vol; }
     return pcm;
   };
+  if (nombre === "duolingo") { // «pop» redondo: clic seco + tono que cae rápido (imitación del estilo, sonido propio)
+    const pcm = lleno(.085); let fz = 0;
+    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = 430 + 620 * Math.exp(-t * 90);
+      fz += f / sr;
+      const cuerpo = (Math.sin(2 * Math.PI * fz) + Math.sin(4 * Math.PI * fz) * .18) * Math.min(1, t / .0012) * Math.exp(-t * 48);
+      const clic = t < .004 ? (Math.random() * 2 - 1) * (1 - t / .004) * .35 : 0;
+      pcm[k] = (cuerpo + clic) * .28; }
+    return {pcm, sr};
+  }
   if (nombre === "gota") return {pcm:barrido(.09, 1400, 600, 38, .2, u => Math.sqrt(u)), sr};
   if (nombre === "burbuja") return {pcm:barrido(.055, 900, 1800, 70, .2), sr};
   if (nombre === "campana") {
@@ -2618,7 +2627,7 @@ function pcmToque(nombre, sr, lleno){
     pcm[k] = (Math.sin(2 * Math.PI * 2400 * t) * .6 + Math.sin(2 * Math.PI * 3600 * t) * .25) * Math.min(1, t / .0008) * Math.exp(-t * 260) * .16; }
   return {pcm, sr};
 }
-const toqueElegido = () => S.p.toqueTipo || (S.p.toque === false ? "ninguno" : "gota");
+const toqueElegido = () => S.p.toqueTipo || (S.p.toque === false ? "ninguno" : "duolingo");
 function urlTono(tipo){
   if (urlsTono[tipo]) return urlsTono[tipo];
   const {pcm, sr} = pcmTono(tipo), total = pcm.length;
@@ -3400,7 +3409,7 @@ conectarNube();
 setTimeout(() => { for (const tipo of ["ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927172504";
+const VERSION_APP = "20260927172734";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));
