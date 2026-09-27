@@ -95,6 +95,9 @@ h1{font-size:28px}h2{font-size:22px}h3{font-size:18px}
 @keyframes bob{50%{transform:translateY(-4px)}}
 @keyframes hop{30%{transform:translateY(-16px) rotate(-6deg)}60%{transform:translateY(0) rotate(4deg)}}
 @keyframes droop{to{transform:rotate(-8deg) translateY(3px)}}
+.bocanada{position:absolute;pointer-events:none;z-index:3;opacity:0;animation:bocanada 1.4s ease-out forwards}
+@keyframes bocanada{0%{opacity:0;transform:translate(0,0) scale(.5)}15%{opacity:.95}100%{opacity:0;transform:translate(26px,-46px) scale(1.6)}}
+@media (prefers-reduced-motion:reduce){.bocanada{animation-duration:.01s}}
 .tito{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .tito.enojo{animation:enojo .45s ease}
 @keyframes enojo{0%,100%{transform:none}20%{transform:translateX(-5px) rotate(-6deg)}40%{transform:translateX(5px) rotate(6deg)}60%{transform:translateX(-4px) rotate(-4deg)}80%{transform:translateX(3px)}}
@@ -1846,20 +1849,17 @@ function titoEl(size, cara, anim = "idle"){
 }
 /* Felipe no quiere que lo toquen: se enoja, escala y a la quinta se va a fumar afuera. */
 let toquesFelipe = 0, ultimoToque = 0;
-// La voz de Felipe (grabada con generar_audio.py: tose y dice la frase). Se precarga al abrir la app.
-const audiosFelipe = {};
-function audioFelipe(linea){
-  const url = baseAudio() + "es/" + claveAudio("es", "F", linea) + ".mp3";
-  if (!audiosFelipe[url]) { const a = new Audio(url); a.preload = "auto"; audiosFelipe[url] = a; }
-  return audiosFelipe[url];
-}
-function precargarFelipe(){ for (const k of ["tocar", "tocarMucho", "seVa", "vuelve"]) FELIPE[k].forEach(audioFelipe); }
-function vozFelipe(linea){
-  if (!S.p.sonido) return;
-  for (const a of Object.values(audiosFelipe)) if (!a.paused) a.pause(); // que no se pisen dos frases
-  const a = audioFelipe(linea);
-  try { a.currentTime = 0; } catch {}
-  a.play().catch(() => {});
+// Cuando se enoja, Felipe larga una bocanada de humo (una, dos o tres nubes según lo enojado que esté).
+function humoFelipe(s, nubes){
+  const caja = s.parentElement; if (!caja) return;
+  if (getComputedStyle(caja).position === "static") caja.style.position = "relative";
+  const r = s.getBoundingClientRect(), rc = caja.getBoundingClientRect();
+  for (let i = 0; i < nubes; i++) {
+    const n = document.createElement("span"); n.className = "bocanada"; n.textContent = "💨";
+    n.style.left = (r.left - rc.left + r.width * .72) + "px"; n.style.top = (r.top - rc.top + r.height * .35) + "px";
+    n.style.animationDelay = (i * .18) + "s"; n.style.fontSize = Math.max(18, r.width * .32) + "px";
+    caja.append(n); setTimeout(() => n.remove(), 1600 + i * 180);
+  }
 }
 function molestarFelipe(s, size, cara){
   if (s.classList.contains("afuera")) return;
@@ -1867,14 +1867,14 @@ function molestarFelipe(s, size, cara){
   const globo = s.closest(".tito-row")?.querySelector(".bubble");
   const decirle = txt => { if (globo) { if (!globo.dataset.orig) globo.dataset.orig = globo.textContent; globo.textContent = txt; } else toast("🐦 " + txt); };
   if (toquesFelipe >= 5) {
-    const linea = azar(FELIPE.seVa); decirle(linea); vozFelipe(linea); toquesFelipe = 0;
+    decirle(azar(FELIPE.seVa)); humoFelipe(s, 3); toquesFelipe = 0;
     s.innerHTML = tito(size, "enojado"); s.classList.add("afuera");
-    setTimeout(() => { s.classList.remove("afuera"); s.innerHTML = tito(size, cara); const vuelta = azar(FELIPE.vuelve); decirle(vuelta); vozFelipe(vuelta);
+    setTimeout(() => { s.classList.remove("afuera"); s.innerHTML = tito(size, cara); decirle(azar(FELIPE.vuelve));
       setTimeout(() => { if (globo?.dataset.orig) globo.textContent = globo.dataset.orig; }, 3500); }, 7000);
     return;
   }
   const linea = azar(toquesFelipe >= 3 ? FELIPE.tocarMucho : FELIPE.tocar);
-  decirle(conNombre(linea, .5)); vozFelipe(linea);
+  decirle(conNombre(linea, .5)); humoFelipe(s, toquesFelipe >= 3 ? 2 : 1);
   s.innerHTML = tito(size, "enojado"); s.classList.remove("enojo"); void s.offsetWidth; s.classList.add("enojo");
   clearTimeout(s._h); s._h = setTimeout(() => { s.innerHTML = tito(size, cara); s.classList.remove("enojo"); if (globo?.dataset.orig) globo.textContent = globo.dataset.orig; }, 2600);
 }
@@ -3114,7 +3114,7 @@ aplicar(lsLeer());
 render();
 conectarNube();
 // Precarga: los tonos y la voz de Felipe listos para sonar sin demora.
-setTimeout(() => { for (const tipo of ["tap", "ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); precargarFelipe(); }, 1500);
+setTimeout(() => { for (const tipo of ["tap", "ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
