@@ -181,6 +181,13 @@ input.answer:focus{border-color:var(--act);outline:none}
 .banner-instalar{display:flex;flex-direction:column;gap:12px;border-color:var(--act);text-align:left;width:100%;max-width:460px;box-sizing:border-box}
 .banner-instalar .xbtn{flex:none}
 .banner-instalar .pasos{font-weight:700;line-height:1.5;background:var(--act-soft);border-radius:14px;padding:10px 12px}
+html,body{overscroll-behavior-y:none}
+@media (pointer:coarse){
+  .card,.opt,.item,.kpi,.bubble,.tok,.line .txt,input.answer,select,header.top{backdrop-filter:none;-webkit-backdrop-filter:none}
+  .card,.opt,.item,.kpi,.bubble,.tok,.line .txt{background:#1E1A34}
+  header.top{background:rgba(11,10,26,.94)}
+}
+#stars{height:100vh;height:100lvh}
 .micbox{display:flex;flex-direction:column;gap:10px}
 .btn.mic{--c:#2A1F55;--cd:#7C5CFF;--ct:#fff}
 .btn.mic.rec{--c:#B3261E;--cd:#7A120C;animation:latido 1s ease-in-out infinite}
@@ -2017,12 +2024,30 @@ function distancia(a, b){
   for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
   return d[m][n];
 }
+// Todas las formas válidas de una respuesta: «der Apfel / die Äpfel», «rēx, rēgis», «build → built»,
+// «how long…?», la palabra sin artículo, etc. Se ignoran mayúsculas, tildes y rayitas del latín.
+const ARTICULO = /^(der|die|das|den|dem|ein|eine|einen|the|a|an|to)\s+/i;
+function variantes(correcto){
+  const set = new Set();
+  const sumar = x => { x = x.replace(/\([^)]*\)/g, " ").replace(/\+.*$/, "").replace(/…|\.\.\./g, " ").replace(/\s+/g, " ").trim(); if (x) set.add(x); };
+  sumar(correcto);
+  correcto.split(/\s*(?:\/|→|,|;)\s*/).forEach(sumar);
+  for (const x of [...set]) { const sin = x.replace(ARTICULO, ""); if (sin !== x) set.add(sin); }
+  return [...set];
+}
 function coincide(escrito, correcto){
-  const a = normal(escrito), b = normal(correcto);
-  if (a === b) return "exacto";
-  if (normal(sinUmlautEscrito(escrito)) === normal(sinUmlautEscrito(correcto))) return "exacto";
-  if (b.length > 5 && distancia(a, b) <= 1) return "casi";
-  return false;
+  const a = normal(escrito), a2 = normal(sinUmlautEscrito(escrito));
+  if (!a) return false;
+  const pideArticulo = /^(der|die|das)\s/i.test(correcto.trim()) && !/^(der|die|das)\s/i.test(escrito.trim());
+  let casi = false;
+  for (const v of variantes(correcto)) {
+    const b = normal(v), b2 = normal(sinUmlautEscrito(v));
+    if (!b) continue;
+    if (a === b || a2 === b2) return pideArticulo && ARTICULO.test(v) === false && v !== correcto ? "sinArticulo" : "exacto";
+    const tolera = b.length > 9 ? 2 : b.length > 4 ? 1 : 0;
+    if (tolera && Math.min(distancia(a, b), distancia(a2, b2)) <= tolera) casi = true;
+  }
+  return casi ? "casi" : false;
 }
 
 /* voz y sonidos */
@@ -2208,8 +2233,38 @@ function botonMicrofono(t, l){
 const botonVoz = (texto, l, lento = false, quien = null) => el("button", {class:"say" + (lento ? " slow" : ""), "aria-label":lento ? "Escuchar lento" : "Escuchar",
   onclick:e => { e.stopPropagation(); decir(texto, l, lento, quien); }}, lento ? "🐢" : "🔊");
 let ctxAudio = null;
+// Los tonos se generan como pequeños archivos WAV y se tocan igual que las voces: así suenan
+// en todos los celulares (el audio web «sintetizado» se suspende o queda mudo en muchos).
+const urlsTono = {};
+function urlTono(tipo){
+  if (urlsTono[tipo]) return urlsTono[tipo];
+  const notas = tipo === "ok" ? [660, 880] : tipo === "fin" ? [523, 659, 784, 1047] : [220, 180];
+  const sr = 22050, paso = .09, dur = .17, total = Math.ceil(sr * (paso * (notas.length - 1) + dur + .02));
+  const pcm = new Float32Array(total);
+  notas.forEach((f, i) => {
+    const ini = Math.floor(sr * paso * i), largo = Math.floor(sr * dur);
+    for (let k = 0; k < largo && ini + k < total; k++) {
+      const t = k / sr, fase = (f * t) % 1;
+      const onda = tipo === "no" ? (fase < .5 ? 1 : -1) * .35 : 1 - 4 * Math.abs(fase - .5);
+      const env = Math.min(1, t / .015) * Math.exp(-t * 18);
+      pcm[ini + k] += onda * env * (tipo === "no" ? .45 : .6);
+    }
+  });
+  const buf = new ArrayBuffer(44 + total * 2), dv = new DataView(buf);
+  const txt = (o, t) => [...t].forEach((ch, i) => dv.setUint8(o + i, ch.charCodeAt(0)));
+  txt(0, "RIFF"); dv.setUint32(4, 36 + total * 2, true); txt(8, "WAVE"); txt(12, "fmt ");
+  dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true); dv.setUint32(24, sr, true);
+  dv.setUint32(28, sr * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true); txt(36, "data"); dv.setUint32(40, total * 2, true);
+  for (let k = 0; k < total; k++) dv.setInt16(44 + k * 2, Math.max(-1, Math.min(1, pcm[k])) * 32767, true);
+  return (urlsTono[tipo] = URL.createObjectURL(new Blob([buf], {type:"audio/wav"})));
+}
 function tono(tipo){
   if (!S.p.sonido) return;
+  try { const a = new Audio(urlTono(tipo)); a.volume = tipo === "no" ? .7 : .9; a.play().catch(() => tonoWeb(tipo)); }
+  catch { tonoWeb(tipo); }
+}
+// Respaldo: el tono sintetizado de antes.
+function tonoWeb(tipo){
   try {
     ctxAudio = ctxAudio || new (window.AudioContext || window.webkitAudioContext)();
     // En el celular el sistema de sonido se suspende (sobre todo después de reproducir una voz):
@@ -2581,7 +2636,7 @@ function correrPasos(u, l, pasos){
       const comprobar = () => {
         if (listo || !inp.value.trim()) return;
         const r = coincide(inp.value, w[0]);
-        cerrar(!!r, w[0], r === "casi" ? "Casi perfecto: ojo con la ortografía." : l === "la" ? "Podés escribir sin las rayitas (ā, ē…)." : l === "de" ? "Si no tenés ü, ö o ä, podés escribir ue, oe o ae." : null);
+        cerrar(!!r, w[0], r === "casi" ? "Casi perfecto: ojo con la ortografía." : r === "sinArticulo" ? `¡Bien! Aprendelo con su artículo: «${w[0]}». En alemán el artículo es parte de la palabra.` : l === "la" ? "Podés escribir sin las rayitas (ā, ē…)." : l === "de" ? "Si no tenés ü, ö o ä, podés escribir ue, oe o ae." : null);
       };
       inp.addEventListener("keydown", e => { if (e.key === "Enter") comprobar(); });
       st.append(el("div", {class:"eyebrow"}, p.repaso ? "🔁 Repaso de otra unidad" : "✍️ Escribilo de memoria"), titulo(w[2] + " " + w[1]), inp,
@@ -2879,8 +2934,12 @@ function cielo(){
   const c = document.getElementById("stars"), x = c.getContext("2d");
   const quieto = matchMedia("(prefers-reduced-motion: reduce)").matches;
   let W, H, dpr, estrellas = [], fugaz = null, ultima = 0;
+  // En el celular la barra de direcciones aparece y desaparece al hacer scroll y cambia el alto:
+  // el lienzo se dimensiona al alto máximo de la pantalla y solo se rearma si cambia el ancho (girar el celu).
   const armar = () => {
-    dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = innerHeight;
+    if (W === innerWidth && estrellas.length) return;
+    dpr = Math.min(2, devicePixelRatio || 1); W = innerWidth; H = Math.max(innerHeight, screen.height || 0);
+    c.style.height = H + "px";
     c.width = W * dpr; c.height = H * dpr; x.setTransform(dpr, 0, 0, dpr, 0, 0);
     const n = Math.round(Math.min(220, W * H / 5500));
     estrellas = Array.from({length:n}, () => ({x:Math.random() * W, y:Math.random() * H, r:Math.random() * 1.4 + .3,
