@@ -1,4 +1,4 @@
-const CACHE = "trilingua-20260927172240";
+const CACHE = "trilingua-20260927172504";
 const AUDIO = "trilingua-audio", FUENTES = "trilingua-fuentes";
 const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE))); self.skipWaiting(); });

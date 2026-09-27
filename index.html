@@ -2547,12 +2547,7 @@ function pcmTono(tipo){
   const sr = 22050;
   const lleno = seg => new Float32Array(Math.ceil(sr * seg));
   const ruido = (() => { let x = 0; return corte => { x += corte * ((Math.random() * 2 - 1) - x); return x; }; })();
-  if (tipo === "tap") { // «tic» de teclado: cortísimo (25 ms), agudo y muy suave, para que no canse
-    const pcm = lleno(.025);
-    for (let k = 0; k < pcm.length; k++) { const t = k / sr;
-      pcm[k] = (Math.sin(2 * Math.PI * 2400 * t) * .6 + Math.sin(2 * Math.PI * 3600 * t) * .25) * Math.min(1, t / .0008) * Math.exp(-t * 260) * .16; }
-    return {pcm, sr};
-  }
+  if (tipo.startsWith("tap:")) return pcmToque(tipo.slice(4), sr, lleno);
   if (tipo === "tos" || tipo === "tosLarga") {
     // Tos de fumador: cada golpe es aire áspero (ruido filtrado en las resonancias de la garganta)
     // con un arranque seco y un poquito de voz grave. La larga es un ataque de tos que se va apagando.
@@ -2593,6 +2588,37 @@ function pcmTono(tipo){
   });
   return {pcm, sr};
 }
+// Sonidos para el toque de botones (se eligen en Perfil).
+const TOQUES = [["gota", "💧 Gota"], ["madera", "🪵 Madera"], ["campana", "🔔 Campanita"], ["burbuja", "🫧 Burbuja"], ["tic", "⌨️ Tic"], ["ninguno", "🔇 Ninguno"]];
+function pcmToque(nombre, sr, lleno){
+  let fase = 0;
+  const barrido = (dur, f0, f1, dec, vol, curva = t => t) => { // tono que cambia de f0 a f1
+    const pcm = lleno(dur);
+    for (let k = 0; k < pcm.length; k++) { const t = k / sr, f = f0 + (f1 - f0) * Math.min(1, curva(t / dur));
+      fase += f / sr; pcm[k] = Math.sin(2 * Math.PI * fase) * Math.min(1, t / .002) * Math.exp(-t * dec) * vol; }
+    return pcm;
+  };
+  if (nombre === "gota") return {pcm:barrido(.09, 1400, 600, 38, .2, u => Math.sqrt(u)), sr};
+  if (nombre === "burbuja") return {pcm:barrido(.055, 900, 1800, 70, .2), sr};
+  if (nombre === "campana") {
+    const pcm = lleno(.25);
+    for (let k = 0; k < pcm.length; k++) { const t = k / sr;
+      pcm[k] = (Math.sin(2 * Math.PI * 1760 * t) + Math.sin(2 * Math.PI * 2640 * t) * .35 + Math.sin(2 * Math.PI * 3520 * t) * .12) * Math.min(1, t / .002) * Math.exp(-t * 16) * .07; }
+    return {pcm, sr};
+  }
+  if (nombre === "madera") {
+    const pcm = lleno(.07);
+    for (let k = 0; k < pcm.length; k++) { const t = k / sr;
+      pcm[k] = (Math.sin(2 * Math.PI * 520 * t) * .7 + Math.sin(2 * Math.PI * 1180 * t) * .35 + Math.sin(2 * Math.PI * 2150 * t) * .15) * Math.min(1, t / .0015) * Math.exp(-t * 75) * .26; }
+    return {pcm, sr};
+  }
+  // tic
+  const pcm = lleno(.025);
+  for (let k = 0; k < pcm.length; k++) { const t = k / sr;
+    pcm[k] = (Math.sin(2 * Math.PI * 2400 * t) * .6 + Math.sin(2 * Math.PI * 3600 * t) * .25) * Math.min(1, t / .0008) * Math.exp(-t * 260) * .16; }
+  return {pcm, sr};
+}
+const toqueElegido = () => S.p.toqueTipo || (S.p.toque === false ? "ninguno" : "gota");
 function urlTono(tipo){
   if (urlsTono[tipo]) return urlsTono[tipo];
   const {pcm, sr} = pcmTono(tipo), total = pcm.length;
@@ -2651,7 +2677,8 @@ addEventListener("pointerdown", e => {
   destrabarTonos();
   if (sonidoRapido()) despertarSonido();
   const t = e.target.closest ? e.target : null;
-  if (S.p.toque !== false && t && !t.closest(".tito") && t.closest("button, a.btn, .opt, .tok, .node")) tono("tap");
+  const elegido = toqueElegido();
+  if (elegido !== "ninguno" && t && !t.closest(".tito") && t.closest("button, a.btn, .opt, .tok, .node")) tono("tap:" + elegido);
 }, {capture:true, passive:true});
 // Respaldo: el tono sintetizado de antes.
 function tonoWeb(tipo){
@@ -3304,9 +3331,10 @@ function vistaPerfil(v){
   const meta = el("select", {id:"meta", "aria-label":"Meta diaria", onchange:e => { S.p.meta = +e.target.value; guardar(); toast("Meta actualizada ✓"); }},
     ...[[30, "🙂 Tranqui · 30 puntos (≈10 min)"], [50, "💪 En serio · 50 puntos (≈20 min)"], [80, "🚀 Intensa · 80 puntos (≈30 min)"]].map(([n, t]) => el("option", {value:n, selected:(S.p.meta || 50) === n}, t)));
   const sw = el("input", {type:"checkbox", id:"sonido", checked:S.p.sonido !== false, onchange:e => { S.p.sonido = e.target.checked; guardar(); }, style:"width:22px;height:22px"});
-  const swToque = el("input", {type:"checkbox", id:"toque", checked:S.p.toque !== false, onchange:e => { S.p.toque = e.target.checked; guardar(); if (e.target.checked) tono("tap"); }, style:"width:22px;height:22px"});
+  const selToque = el("select", {id:"toque", "aria-label":"Sonido al tocar", onchange:e => { S.p.toqueTipo = e.target.value; guardar(); if (e.target.value !== "ninguno") setTimeout(() => tono("tap:" + e.target.value), 60); }},
+    ...TOQUES.map(([v, t]) => el("option", {value:v, selected:toqueElegido() === v}, t)));
   v.append(el("div", {class:"card", style:"display:flex;flex-direction:column;gap:12px"}, el("h3", {}, "Ajustes"), meta, el("label", {class:"switch", for:"sonido"}, "Efectos de sonido", sw),
-    el("label", {class:"switch", for:"toque"}, "Sonido suave al tocar botones", swToque),
+    el("label", {for:"toque", style:"font-weight:800;display:flex;flex-direction:column;gap:6px"}, "Sonido al tocar botones (elegí y escuchalo)", selToque),
     el("div", {class:"small muted"}, "🐦 Felipe es un pijuí de ficción con muy malas decisiones de vida. Él fuma; vos no le copies eso. 🚭"),
     el("div", {class:"small muted"}, Store.modo === "nube" ? "☁️ Tu progreso se guarda en tu cuenta y se sincroniza entre el celular y la PC." : "📱 Tu progreso se guarda en este navegador.")));
   v.append(tarjetaInstalar());
@@ -3369,10 +3397,10 @@ aplicar(lsLeer());
 render();
 conectarNube();
 // Precarga: los tonos y la voz de Felipe listos para sonar sin demora.
-setTimeout(() => { for (const tipo of ["tap", "ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
+setTimeout(() => { for (const tipo of ["ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927172240";
+const VERSION_APP = "20260927172504";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));
