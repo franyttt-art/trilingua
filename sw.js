@@ -1,4 +1,4 @@
-const CACHE = "trilingua-20260927162714";
+const CACHE = "trilingua-20260927163634";
 const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
@@ -9,6 +9,8 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   const r = e.request;
   if (r.method !== "GET") return;
+  // El aviso de versión nueva y el APK siempre se buscan en internet (nunca del cache).
+  if (/version\.json|\.apk$/.test(new URL(r.url).pathname)) return;
   // Audios: se piden enteros (sin rango) para poder guardarlos y que anden sin internet.
   if (new URL(r.url).pathname.includes("/audio/")) {
     e.respondWith(caches.open("trilingua-audio").then(c => c.match(r.url).then(hit => hit ||
