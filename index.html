@@ -178,6 +178,9 @@ input.answer:focus{border-color:var(--act);outline:none}
 .bienvenida .nombre-in{width:100%;max-width:340px;flex:none;text-align:center;font-size:22px}
 .bienvenida .btn{width:100%;max-width:340px}
 .codigo{width:100%;box-sizing:border-box;border-radius:14px;border:2px solid var(--line);background:var(--surface2);color:var(--ink);padding:10px;font:600 13px/1.35 ui-monospace,monospace;resize:vertical}
+.banner-instalar{display:flex;flex-direction:column;gap:12px;border-color:var(--act);text-align:left;width:100%;max-width:460px;box-sizing:border-box}
+.banner-instalar .xbtn{flex:none}
+.banner-instalar .pasos{font-weight:700;line-height:1.5;background:var(--act-soft);border-radius:14px;padding:10px 12px}
 .micbox{display:flex;flex-direction:column;gap:10px}
 .btn.mic{--c:#2A1F55;--cd:#7C5CFF;--ct:#fff}
 .btn.mic.rec{--c:#B3261E;--cd:#7A120C;animation:latido 1s ease-in-out infinite}
@@ -1875,7 +1878,49 @@ const LS = "trilingua_v2";
 // Direccion publica de la version instalable. Vacia hasta que se publique en GitHub Pages.
 const URL_APP = "https://franyttt-art.github.io/trilingua/";
 let pedidoInstalar = null;
-addEventListener("beforeinstallprompt", e => { e.preventDefault(); pedidoInstalar = e; });
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); pedidoInstalar = e; actualizarBanners(); });
+addEventListener("appinstalled", () => { pedidoInstalar = null; toast("📲 ¡Trilingua instalada! Buscá el ícono de Felipe."); actualizarBanners(); });
+const UA = navigator.userAgent || "";
+// WhatsApp, Instagram, Facebook y otras apps abren los links en un navegador interno que no deja instalar.
+const enAppInterna = /FBAN|FBAV|Instagram|WhatsApp|Line\/|TikTok|Snapchat|; wv\)/i.test(UA);
+const esIOS = /iPhone|iPad|iPod/i.test(UA) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+let bannerOculto = (() => { try { return localStorage.getItem("trilingua_banner") === "no"; } catch { return false; } })();
+function bannerInstalar(){
+  if (instalada() || bannerOculto) return null;
+  const b = el("div", {class:"card banner-instalar"});
+  const cerrar = el("button", {class:"xbtn", "aria-label":"Ocultar", onclick:() => {
+    bannerOculto = true; try { localStorage.setItem("trilingua_banner", "no"); } catch {}
+    document.querySelectorAll(".banner-instalar").forEach(x => x.remove()); toast("Lo tenés en Perfil cuando quieras instalarla.");
+  }}, "✕");
+  const titulo = (txt, sub) => el("div", {class:"row"}, el("span", {style:"font-size:32px"}, "📲"),
+    el("div", {class:"sp"}, el("b", {}, txt), sub ? el("div", {class:"small muted"}, sub) : null), cerrar);
+  const copiarLink = () => el("button", {class:"btn", onclick:async () => {
+    try { await navigator.clipboard.writeText(URL_APP || location.href); toast("📋 Link copiado. Pegalo en Chrome."); } catch { toast(URL_APP || location.href); }
+  }}, "📋 Copiar link");
+  if (enMarco && URL_APP) {
+    b.append(titulo("Instalá Trilingua en tu celular", "Con voces, sin internet y con micrófono."),
+      el("a", {class:"btn pri big", href:URL_APP, target:"_blank", rel:"noopener", style:"text-align:center;text-decoration:none"}, "Abrir la app para instalarla"));
+  } else if (pedidoInstalar) {
+    b.append(titulo("Instalá Trilingua", "Queda como una app con el ícono de Felipe. Funciona sin internet."),
+      el("button", {class:"btn pri big", onclick:async () => { const p = pedidoInstalar; pedidoInstalar = null; p.prompt(); try { await p.userChoice; } catch {} actualizarBanners(); }}, "📲 Instalar ahora"));
+  } else if (enAppInterna) {
+    b.append(titulo("Para instalarla, abrila en tu navegador", "Estás en el navegador de otra app (WhatsApp, Instagram…) y desde acá no se puede instalar."),
+      el("div", {class:"pasos"}, esIOS
+        ? "1. Tocá los tres puntos (…) o el ícono de compás 🧭. 2. Elegí «Abrir en Safari». 3. Ahí: Compartir ⬆️ → «Agregar a inicio»."
+        : "1. Tocá los tres puntos ⋮ arriba a la derecha. 2. Elegí «Abrir en Chrome» (o «Abrir en el navegador»). 3. Ahí aparece «Instalar app»."),
+      copiarLink());
+  } else if (esIOS) {
+    b.append(titulo("Instalá Trilingua en tu iPhone", "En iPhone se instala desde Safari:"),
+      el("div", {class:"pasos"}, "1. Tocá Compartir ⬆️ (abajo, en el centro). 2. Deslizá y elegí «Agregar a inicio». 3. Tocá «Agregar». ¡Listo, aparece Felipe en tu pantalla!"));
+  } else {
+    b.append(titulo("Instalá Trilingua", "Si no te aparece el botón para instalar:"),
+      el("div", {class:"pasos"}, "Tocá los tres puntos ⋮ arriba a la derecha de Chrome → «Instalar app» o «Agregar a pantalla principal». En PC: el ícono ⊕ a la derecha de la dirección."));
+  }
+  return b;
+}
+function actualizarBanners(){
+  document.querySelectorAll(".banner-instalar").forEach(viejo => { const nuevo = bannerInstalar(); nuevo ? viejo.replaceWith(nuevo) : viejo.remove(); });
+}
 const instalada = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const codigoProgreso = () => btoa(unescape(encodeURIComponent(JSON.stringify({p:S.p, srs:S.srs, lang:S.lang}))));
 function cargarCodigo(txt){
@@ -2023,6 +2068,9 @@ function claveAudio(l, rol, texto){ const k = `${l}|${rol}|${texto.trim()}`; ret
 const baseAudio = () => (enMarco ? URL_APP : "") + "audio/";
 let audioActual = null;
 const audiosQueFaltan = new Set();
+// Cada cambio de pantalla abre un «turno» nuevo: las lecturas encadenadas del turno anterior se cortan.
+let turnoAudio = 0;
+function silenciar(){ turnoAudio++; pararAudio(); }
 function pararAudio(){
   if (audioActual) { try { audioActual.pause(); } catch {} audioActual = null; }
   try { speechSynthesis.cancel(); } catch {}
@@ -2164,6 +2212,14 @@ function tono(tipo){
   if (!S.p.sonido) return;
   try {
     ctxAudio = ctxAudio || new (window.AudioContext || window.webkitAudioContext)();
+    // En el celular el sistema de sonido se suspende (sobre todo después de reproducir una voz):
+    // hay que despertarlo y recién ahí tocar las notas, si no, el tono se pierde.
+    if (ctxAudio.state !== "running") { ctxAudio.resume().then(() => tocarNotas(tipo)).catch(() => {}); return; }
+    tocarNotas(tipo);
+  } catch {}
+}
+function tocarNotas(tipo){
+  try {
     const notas = tipo === "ok" ? [660, 880] : tipo === "fin" ? [523, 659, 784, 1047] : [220, 180];
     notas.forEach((f, i) => {
       const o = ctxAudio.createOscillator(), g = ctxAudio.createGain(), t = ctxAudio.currentTime + i * .09;
@@ -2271,10 +2327,11 @@ function vistaBienvenida(v){
     el("p", {class:"muted"}, "Un pijuí fumador y tu nuevo profe de inglés, alemán y latín. Antes de arrancar: ¿cómo te llamás? No es que me importe, es para saber a quién retar."),
     campo,
     el("button", {class:"btn pri big", onclick:listo}, "Ese soy yo"),
-    el("div", {class:"small muted"}, "🔒 Tu nombre queda guardado solo en este dispositivo.")));
+    el("div", {class:"small muted"}, "🔒 Tu nombre queda guardado solo en este dispositivo."), bannerInstalar()));
   setTimeout(() => campo.focus(), 300);
 }
 function render(){
+  silenciar();
   document.body.classList.remove("inlesson"); $("#topbar").classList.remove("hide");
   pintarCabecera();
   const v = $("#view"); v.replaceChildren(); colorLang(v); colorLang($("#app")); $("#app").classList.add("app");
@@ -2290,6 +2347,7 @@ function vistaCamino(v){
   const L = CURSO[S.lang], hoy = hoyStr(), xpHoy = S.p.hoy === hoy ? S.p.xpHoy : 0, meta = S.p.meta || 50;
   const pct = Math.min(100, Math.round(xpHoy / meta * 100));
   const actual = L.unidades.findIndex((u, i) => desbloqueada(S.lang, i) && !hecha(S.lang, u.id));
+  const bi = bannerInstalar(); if (bi) v.append(bi);
   if (micEstado === "negado" && navigator.mediaDevices?.getUserMedia) {
     const aviso = el("div", {class:"card micpide"},
       el("div", {class:"row"}, el("span", {style:"font-size:34px"}, "🎤"), el("div", {class:"sp"}, el("b", {}, "El micrófono está bloqueado"),
@@ -2335,7 +2393,7 @@ function vistaCamino(v){
    ========================================================================= */
 function abrirUnidad(u){
   document.body.classList.add("inlesson"); $("#topbar").classList.add("hide");
-  const l = S.lang, v = $("#view"); v.replaceChildren(); colorLang(v);
+  const l = S.lang, v = $("#view"); silenciar(); v.replaceChildren(); colorLang(v);
   scrollTo(0, 0);
   const pasos = u.tipo === "sonidos" ? construirSonidos(u, l) : u.tipo === "examen" ? construirExamen(l, u.lvl || "A1") : construirLeccion(u, l);
   correrPasos(u, l, pasos);
@@ -2391,12 +2449,13 @@ function correrPasos(u, l, pasos){
       titoEl(80, "triste", "sad"), el("h2", {}, "¿Te vas?"), el("p", {class:"muted", style:"margin:0"}, conNombre(FELIPE.salir, .8) + " (Si salís, perdés el avance de esta unidad.)"),
       el("button", {class:"btn pri big", onclick:() => mostrar()}, "Seguir aprendiendo"),
       el("button", {class:"btn link", onclick:() => irA("camino")}, "Salir igual"));
-    v.replaceChildren(top(), hoja);
+    silenciar(); v.replaceChildren(top(), hoja);
   }
   function siguiente(){ idx++; mostrar(); }
   function mostrar(){
     const paso = pasos[idx];
     if (!paso) return;
+    silenciar();
     v.replaceChildren(top());
     const stage = el("div", {class:"stage"}); v.append(stage);
     scrollTo(0, 0);
@@ -2434,7 +2493,12 @@ function correrPasos(u, l, pasos){
     let reproduciendo = false;
     const todo = el("button", {class:"btn", onclick:async () => {
       if (reproduciendo) return; reproduciendo = true;
-      for (const [q, t] of u.h) { await decir(t, l, false, q); await new Promise(r => setTimeout(r, 250)); }
+      const turno = turnoAudio;
+      for (const [q, t] of u.h) {
+        if (turno !== turnoAudio) break;
+        await decir(t, l, false, q);
+        await new Promise(r => setTimeout(r, 250));
+      }
       reproduciendo = false;
     }}, "🔊 Escuchar todo");
     st.append(todo, lista, el("div", {class:"hint-tap"}, "Tratá de entender la idea general antes de mirar la traducción."),
@@ -2675,7 +2739,7 @@ function sesionRepaso(l, cola){
   document.body.classList.add("inlesson"); $("#topbar").classList.add("hide");
   const v = $("#view"); let i = 0, bien = 0; const total = cola.length;
   const siguiente = () => {
-    v.replaceChildren();
+    silenciar(); v.replaceChildren();
     if (!cola.length) {
       const xp = Math.min(40, 5 + bien * 2); sumarXp(xp); tono("fin"); if (bien === total) confeti();
       v.append(el("div", {class:"stage celebrate"}, titoEl(120, "contento", "happy"), el("h1", {}, "¡Repaso listo!"),
@@ -2747,12 +2811,12 @@ function practicarDialogo(u){
   const falso = {...u, tipo:"dialogo"};
   document.body.classList.add("inlesson"); $("#topbar").classList.add("hide");
   const pasos = [...mezclar(u.d).map((d, i) => ({tipo:"ej", ej:"dialogo", d, i})), ...u.h.slice(0, 2).map(h => ({tipo:"ej", ej:"shadowing", h})), {tipo:"fin"}];
-  const v = $("#view"); v.replaceChildren(); colorLang(v);
+  const v = $("#view"); silenciar(); v.replaceChildren(); colorLang(v);
   correrPasos({...falso, v:null}, S.lang, [{tipo:"intro"}, ...pasos].slice(1));
 }
 function releer(u){
   document.body.classList.add("inlesson"); $("#topbar").classList.add("hide");
-  const v = $("#view"); v.replaceChildren(); colorLang(v);
+  const v = $("#view"); silenciar(); v.replaceChildren(); colorLang(v);
   v.append(el("div", {class:"lesson-top"}, el("button", {class:"xbtn", "aria-label":"Volver", onclick:() => irA("practica")}, "✕"), el("h3", {class:"sp"}, "📖 " + u.t)));
   const lista = el("div", {style:"display:flex;flex-direction:column;gap:10px"});
   u.h.forEach(([q, t, es]) => { const esp = el("div", {class:"es hide"}, es);
