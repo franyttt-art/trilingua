@@ -212,6 +212,9 @@ html,body{overscroll-behavior-y:none}
 details.otros{border-top:1px solid var(--line);padding-top:10px}
 details.otros summary{cursor:pointer;font-weight:800;color:var(--muted);padding:4px 0}
 details.otros[open] summary{margin-bottom:6px}
+.off-fila{display:flex;flex-direction:column;gap:6px;padding-top:8px;border-top:1px solid var(--line)}
+.off-fila .row{gap:10px;align-items:center}
+.off-fila .btn{padding:8px 14px}
 .link-apk{align-self:center;color:var(--muted);font-weight:700;font-size:14px;text-decoration:underline;padding:4px}
 .pill.descargar[hidden]{display:none}
 .desc-fondo{position:fixed;inset:0;z-index:60;background:rgba(5,4,14,.72);display:flex;align-items:flex-end;justify-content:center;padding:12px;overflow:auto}
@@ -2077,6 +2080,75 @@ function tarjetaInstalar(){
     caja);
   return c;
 }
+/* Sin internet: la app ya queda guardada en el dispositivo; los audios se bajan por idioma (o por unidad al abrirla). */
+const CACHE_AUDIO = "trilingua-audio";
+const puedeOffline = () => "serviceWorker" in navigator && "caches" in window && !enMarco;
+// Las mismas frases que graba generar_audio.py, con su voz.
+function audiosDeUnidad(l, u){
+  const urls = new Set(), sumar = (rol, t) => urls.add(baseAudio() + l + "/" + claveAudio(l, rol, t) + ".mp3");
+  (u.h || []).forEach(([q, t]) => sumar(q === "A" ? "A" : "B", t));
+  (u.v || []).forEach(w => sumar("B", w[0]));
+  (u.d || []).forEach(d => sumar("A", d[0]));
+  (u.s || []).forEach(x => sumar("B", x[0]));
+  (u.pares || []).forEach(([a, b]) => { sumar("B", a); sumar("B", b); });
+  return [...urls];
+}
+const audiosDe = l => [...new Set(CURSO[l].unidades.flatMap(u => audiosDeUnidad(l, u)))];
+async function contarGuardados(urls){
+  const c = await caches.open(CACHE_AUDIO); let n = 0;
+  for (const u of urls) if (await c.match(u)) n++;
+  return n;
+}
+async function descargarAudios(urls, alAvanzar = () => {}){
+  const c = await caches.open(CACHE_AUDIO); let i = 0, hechos = 0, fallas = 0;
+  const trabajar = async () => {
+    while (i < urls.length) {
+      const u = urls[i++];
+      try { if (!(await c.match(u))) { const r = await fetch(u); if (r.ok) await c.put(u, r); else fallas++; } } catch { fallas++; }
+      alAvanzar(++hechos, urls.length);
+    }
+  };
+  await Promise.all(Array.from({length:6}, trabajar));
+  return fallas;
+}
+function tarjetaOffline(){
+  const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:12px"}, el("h3", {}, "📴 Usar sin internet"));
+  if (enMarco) { c.append(el("div", {class:"small muted"}, "Esta versión (dentro de claude.ai) necesita internet. Instalá la app con el botón «⬇ Instalar» y ahí funciona sin conexión.")); return c; }
+  if (!puedeOffline() || (esIOS && !instalada() && navIOS !== "Safari")) {
+    c.append(el("div", {class:"small"}, esIOS
+      ? `En iPhone, ${navIOS} como pestaña no puede guardar la app. Instalala en tu pantalla de inicio (botón «⬇ Instalar» arriba) y abrila desde ahí: así funciona sin internet.`
+      : "Este navegador no puede guardar la app. Abrila en Chrome, Edge o Safari e instalala."));
+    return c;
+  }
+  c.append(el("div", {class:"small muted"}, "La app ya funciona sin conexión. Para escuchar las voces sin internet, bajá los audios del idioma que estés estudiando (unos 20 MB cada uno). Lo que abras con internet se guarda solo."));
+  for (const l of ["en", "de", "la"]) {
+    const urls = audiosDe(l), barra = el("i"), estado = el("span", {class:"small muted"}, "Revisando…");
+    const boton = el("button", {class:"btn", disabled:true}, "Descargar");
+    const fila = el("div", {class:"off-fila"},
+      el("div", {class:"row"}, el("b", {class:"sp"}, CURSO[l].nombre), estado, boton),
+      el("div", {class:"medidor"}, barra));
+    const pintar = (n, total) => { barra.style.width = (n / total * 100) + "%"; estado.textContent = n >= total ? "✓ Listo" : `${n} de ${total} audios`; };
+    contarGuardados(urls).then(n => { pintar(n, urls.length); boton.disabled = n >= urls.length; boton.textContent = n >= urls.length ? "Descargado" : n ? "Completar" : "Descargar"; });
+    boton.onclick = async () => {
+      if (!navigator.onLine) { toast("Necesitás internet para bajar los audios."); return; }
+      try { await navigator.storage?.persist?.(); } catch {} // que el celular no los borre para liberar espacio
+      boton.disabled = true; boton.textContent = "Bajando…";
+      const ya = await contarGuardados(urls);
+      const faltan = [];
+      const c2 = await caches.open(CACHE_AUDIO);
+      for (const u of urls) if (!(await c2.match(u))) faltan.push(u);
+      const fallas = await descargarAudios(faltan, n => pintar(ya + n, urls.length));
+      const total = await contarGuardados(urls);
+      pintar(total, urls.length);
+      boton.textContent = total >= urls.length ? "Descargado" : "Reintentar"; boton.disabled = total >= urls.length;
+      toast(fallas ? `Faltaron ${fallas} audios: tocá «Reintentar» con mejor señal.` : `✓ ${CURSO[l].nombre} listo para usar sin internet`);
+    };
+    c.append(fila);
+  }
+  return c;
+}
+addEventListener("offline", () => toast("📴 Sin internet: seguís con lo que tenés guardado."));
+addEventListener("online", () => toast("📶 Volvió internet."));
 function lsGuardar(){ try { localStorage.setItem(LS, JSON.stringify({p:S.p, srs:S.srs, lang:S.lang})); } catch {} }
 function lsLeer(){ try { return JSON.parse(localStorage.getItem(LS) || "null"); } catch { return null; } }
 function aplicar(d){
@@ -2685,6 +2757,7 @@ function vistaCamino(v){
 function abrirUnidad(u){
   document.body.classList.add("inlesson"); $("#topbar").classList.add("hide");
   const l = S.lang, v = $("#view"); silenciar(); v.replaceChildren(); colorLang(v);
+  if (puedeOffline() && navigator.onLine) descargarAudios(audiosDeUnidad(l, u)).catch(() => {}); // así la unidad anda aunque se corte internet
   scrollTo(0, 0);
   const pasos = u.tipo === "sonidos" ? construirSonidos(u, l) : u.tipo === "examen" ? construirExamen(l, u.lvl || "A1") : construirLeccion(u, l);
   correrPasos(u, l, pasos);
@@ -3151,6 +3224,7 @@ function vistaPerfil(v){
     el("div", {class:"small muted"}, "🐦 Felipe es un pijuí de ficción con muy malas decisiones de vida. Él fuma; vos no le copies eso. 🚭"),
     el("div", {class:"small muted"}, Store.modo === "nube" ? "☁️ Tu progreso se guarda en tu cuenta y se sincroniza entre el celular y la PC." : "📱 Tu progreso se guarda en este navegador.")));
   v.append(tarjetaInstalar());
+  v.append(tarjetaOffline());
   v.append(el("div", {class:"card method"}, el("h2", {}, "🧪 Por qué funciona Trilingua"),
     el("p", {class:"muted small"}, "Cada parte de la app sale de la investigación sobre cómo se aprende un idioma más rápido:"),
     el("ul", {style:"padding-left:18px;margin:0"}, ...METODO.map(([e, t, x]) => el("li", {}, e + " ", el("b", {}, t + ": "), x))),
@@ -3212,7 +3286,7 @@ conectarNube();
 setTimeout(() => { for (const tipo of ["tap", "ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927170037";
+const VERSION_APP = "20260927170642";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));
