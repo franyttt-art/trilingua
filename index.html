@@ -2322,6 +2322,19 @@ addEventListener("online", () => toast("📶 Volvió internet."));
    y pase de progreso por link. Todo funciona en el dispositivo, sin servidor.
    ========================================================================= */
 const semanaDe = f => { const d = new Date(f + "T12:00:00"); d.setDate(d.getDate() - (d.getDay() + 6) % 7); return fecha(d); }; // lunes
+// Puntaje justo: los niveles altos valen más y repetir lo ya hecho da poco (con tope diario),
+// así nadie sube en la liga repitiendo la unidad 1 mil veces.
+const MULT_NIVEL = {A1:1, A2:1.25, B1:1.5, B2:1.75, C1:2}, TOPE_REPETIR = 60;
+function xpJusto(base, lvl, modo){
+  let n = Math.round(base * (MULT_NIVEL[lvl || "A1"] || 1));
+  if (modo === "nueva") return n;
+  if (modo === "repite") n = Math.max(1, Math.round(n / 3));
+  const hoy = hoyStr(); if (S.p.repDia !== hoy) { S.p.repDia = hoy; S.p.repHoy = 0; }
+  const queda = Math.max(0, TOPE_REPETIR - (S.p.repHoy || 0)); n = Math.min(n, queda); S.p.repHoy = (S.p.repHoy || 0) + n;
+  if (!queda) setTimeout(() => toast("Hoy ya sumaste el máximo por repetir. Los puntos grandes están en las unidades nuevas."), 1500);
+  return n;
+}
+const nivelMax = () => { let m = -1; for (const l of ["en", "de", "la"]) CURSO[l].unidades.forEach(u => { if (hecha(l, u.id)) m = Math.max(m, NIVELES.indexOf(u.lvl || "A1")); }); return m < 0 ? "" : NIVELES[m]; };
 const xpSemana = () => { const lunes = semanaDe(hoyStr()); return Object.entries(S.p.dias || {}).filter(([f]) => f >= lunes).reduce((a, [, n]) => a + n, 0); };
 const esperar = ms => new Promise(r => setTimeout(r, ms));
 const totalHechas = () => ["en", "de", "la"].reduce((a, l) => a + Object.keys(S.p.hechas[l] || {}).length, 0);
@@ -2575,9 +2588,21 @@ async function desempaquetar(cod){
   return JSON.parse(new TextDecoder().decode(txt));
 }
 const miId = () => S.p.miId || (S.p.miId = Math.random().toString(36).slice(2, 10));
-const entradaLiga = () => ({i:miId(), n:nombreUsuario || "Alguien", x:xpSemana(), r:racha(), s:semanaDe(hoyStr())});
+// Cada entrada de la liga va firmada: si alguien edita el link para inventarse puntos, la firma no coincide y se rechaza.
+const MAX_DIA = 5000;
+const firmar = e => fnvHex("felipe-fuma|" + JSON.stringify([e.i, e.n, e.x, e.t, e.r, e.s, e.v, e.h, e.f]), 2654435761) + fnvHex(JSON.stringify([e.f, e.t, e.i, e.x]) + "|pijui", 3735928559);
+const firmaOk = e => typeof e.k === "string" && e.k === firmar(e);
+const esNum = n => Number.isFinite(n) && n >= 0;
+const creible = e => typeof e.i === "string" && typeof e.n === "string" && esNum(e.x) && esNum(e.t) && esNum(e.h) && esNum(e.f) && e.x <= e.t && e.x <= 7 * MAX_DIA && e.h <= 200 && e.f <= Date.now() + 864e5;
+const creibleSalto = (a, e) => !Number.isFinite(a.t) || !a.f || e.t - a.t <= (Math.ceil((e.f - a.f) / 864e5) + 1) * MAX_DIA;
+function entradaLiga(){
+  const e = {i:miId(), n:(nombreUsuario || "Alguien").slice(0, 24), x:xpSemana(), t:S.p.xp || 0, r:racha(), s:semanaDe(hoyStr()), v:nivelMax(), h:totalHechas(), f:Date.now()};
+  e.k = firmar(e); return e;
+}
+// El link lleva también a los amigos de tu liga: así con un solo link todo el grupo queda actualizado.
+const paqueteLiga = () => ({...entradaLiga(), a:Object.values(S.p.amigos || {}).filter(firmaOk).sort((x, y) => y.f - x.f).slice(0, 30).map(({via, ...e}) => e)});
 async function linkProgreso(){ return (URL_APP || location.href.split("#")[0]) + "#p=" + await empaquetar({p:S.p, srs:S.srs, lang:S.lang, n:nombreUsuario}); }
-async function linkLiga(){ return (URL_APP || location.href.split("#")[0]) + "#amigo=" + await empaquetar(entradaLiga()); }
+async function linkLiga(){ return (URL_APP || location.href.split("#")[0]) + "#amigo=" + await empaquetar(paqueteLiga()); }
 async function compartirLink(url, texto){
   try { if (navigator.share) { await navigator.share({title:"Trilingua", text:texto, url}); return; } } catch (e) { if (e && e.name === "AbortError") return; }
   try { await navigator.clipboard.writeText(url); toast("📋 Link copiado: pegalo en WhatsApp"); } catch { toast("No pude copiar el link en este navegador."); }
@@ -2590,25 +2615,60 @@ async function procesarLink(texto){
     if (m[1] === "p") {
       if (!S.p.xp || (d.p?.xp || 0) >= S.p.xp) { aplicar(d); if (d.n && !nombreUsuario) guardarNombre(d.n); guardar(); toast("✓ Progreso cargado de tu otro dispositivo"); }
       else toast("Este dispositivo tiene más progreso que el link: no lo reemplacé.");
-    } else if (d.i && d.i !== miId()) {
-      S.p.amigos = {...(S.p.amigos || {})}; const ya = S.p.amigos[d.i]; S.p.amigos[d.i] = d; S.p.mandarPuntaje = true; guardar();
-      toast(ya ? `🏆 Actualicé el puntaje de ${d.n}` : `🏆 ${d.n} se sumó a tu liga. Mandale tu puntaje desde Perfil.`);
-    }
+    } else if (d.i === miId()) toast("Ese es tu propio link: mandáselo a tus amigos y pediles el de ellos.");
+    else recibirLiga(d);
     return true;
   } catch { toast("Ese link no es válido o se cortó al copiarlo."); return false; }
 }
+function recibirLiga(d){
+  if (!firmaOk(d) || !creible(d)) { toast(d.k ? "⚠️ Ese link fue modificado o tiene un puntaje imposible: no lo sumé." : "Ese link es de una versión vieja: pedile que actualice la app y te mande uno nuevo."); return; }
+  S.p.amigos = {...(S.p.amigos || {})}; S.p.bloq = {...(S.p.bloq || {})}; delete S.p.bloq[d.i];
+  const previo = S.p.amigos[d.i]; let otros = 0;
+  if (previo && !creibleSalto(previo, d)) { toast(`⚠️ El puntaje de ${d.n} subió de golpe más de lo posible: no lo actualicé.`); return; }
+  if (previo?.f >= d.f) toast(`Ese link de ${d.n} es más viejo que el que ya tenías. Pedile uno nuevo.`);
+  else {
+    // Mismo nombre con otro código = la misma persona desde otro celular: queda uno solo.
+    if (!previo && d.n !== "Alguien") for (const [id, a] of Object.entries(S.p.amigos)) if (a.n.toLowerCase() === d.n.toLowerCase() && (a.f || 0) < d.f) delete S.p.amigos[id];
+    const {a, via, ...limpio} = d; S.p.amigos[d.i] = limpio;
+    toast(previo ? `🏆 Actualicé el puntaje de ${d.n}` : `🏆 ${d.n} se sumó a tu liga. Ahora mandale el tuyo.`);
+  }
+  for (const e of (Array.isArray(d.a) ? d.a.slice(0, 40) : [])) {
+    if (!e || e.i === miId() || S.p.bloq[e.i] || !firmaOk(e) || !creible(e)) continue;
+    const ya = S.p.amigos[e.i]; if (ya && (ya.f >= e.f || !creibleSalto(ya, e))) continue;
+    const {a, via, ...limpio} = e; S.p.amigos[e.i] = ya && !ya.via ? limpio : {...limpio, via:d.n}; otros++;
+  }
+  if (otros) setTimeout(() => toast(`👥 También actualicé ${otros} ${otros === 1 ? "persona" : "personas"} de la liga de ${d.n}.`), 2700);
+  S.p.mandarPuntaje = true; guardar();
+}
+const haceCuanto = f => { if (!f) return "link viejo: pedile uno nuevo"; const d = Math.floor((Date.now() - f) / 864e5); return d <= 0 ? "actualizado hoy" : d === 1 ? "actualizado ayer" : `actualizado hace ${d} días`; };
 function tarjetaLiga(){
-  const semana = semanaDe(hoyStr()), yo = {...entradaLiga(), yo:true};
-  const filas = [yo, ...Object.values(S.p.amigos || {}).map(a => ({...a, x:a.s === semana ? a.x : 0}))].sort((a, b) => b.x - a.x);
-  const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:10px"}, el("h3", {}, "🏆 Liga semanal con amigos"));
-  if (filas.length === 1) c.append(el("div", {class:"small muted"}, "Invitá amigos: les mandás un link, lo abren y aparecen acá. Cada vez que se manden el link, se actualizan los puntajes. La liga arranca de cero cada lunes."));
+  const semana = semanaDe(hoyStr()), yo = {...entradaLiga(), yo:true}, modo = S.p.ligaModo === "semana" ? "semana" : "total";
+  const pts = f => modo === "semana" ? (f.s === semana ? f.x : 0) : (Number.isFinite(f.t) ? f.t : 0);
+  const filas = [yo, ...Object.values(S.p.amigos || {})].map(f => ({...f, p:pts(f)})).sort((a, b) => b.p - a.p);
+  const c = el("div", {class:"card", style:"display:flex;flex-direction:column;gap:10px"}, el("h3", {}, "🏆 Liga con amigos"));
+  const pestana = (m, t) => el("button", {class:"btn sp" + (modo === m ? " pri" : ""), onclick:() => { S.p.ligaModo = m; guardar(); render(); }}, t);
+  c.append(el("div", {class:"row"}, pestana("total", "🏆 Total"), pestana("semana", "📅 Esta semana")),
+    el("div", {class:"small muted"}, modo === "total"
+      ? "Todos los puntos desde que empezó cada uno. Las unidades de nivel alto valen más y repetir lo ya hecho da poco."
+      : "Solo los puntos de esta semana: arranca de cero cada lunes."));
+  const quitar = f => { S.p.amigos = {...S.p.amigos}; delete S.p.amigos[f.i]; S.p.bloq = {...(S.p.bloq || {}), [f.i]:1}; guardar(); toast(`Saqué a ${f.n} de tu liga.`); render(); };
   c.append(el("div", {class:"liga"}, ...filas.map((f, i) => el("div", {class:"liga-f" + (f.yo ? " yo" : "")},
-    el("span", {class:"pos"}, ["🥇", "🥈", "🥉"][i] || (i + 1) + "."), el("b", {class:"sp"}, f.yo ? f.n + " (vos)" : f.n), el("span", {}, "⚡ " + f.x), el("span", {class:"small muted"}, "🔥 " + (f.r || 0))))));
+    el("span", {class:"pos"}, ["🥇", "🥈", "🥉"][i] || (i + 1) + "."),
+    el("div", {class:"sp", style:"display:flex;flex-direction:column;min-width:0"}, el("b", {}, (f.yo ? f.n + " (vos)" : f.n) + (f.v ? " · " + (ICONO_NIVEL[f.v] || "") + " " + f.v : "")),
+      f.yo ? null : el("span", {class:"small muted", style:"font-weight:600"}, haceCuanto(f.f) + (f.via ? " · vía " + f.via : ""))),
+    el("span", {}, "⚡ " + f.p), el("span", {class:"small muted"}, "🔥 " + (f.r || 0)),
+    f.yo ? null : el("button", {class:"xbtn", "aria-label":"Sacar a " + f.n + " de la liga", title:"Sacar de la liga", style:"width:30px;height:30px;font-size:14px", onclick:() => quitar(f)}, "✕")))));
   if (filas.length > 1) { const ult = filas[filas.length - 1]; c.append(el("div", {class:"bubble small"}, ult.yo
     ? "Vas último. Hasta yo, que estoy muerto por dentro, sumo más puntos que vos."
     : `${ult.n} va último. Mandale este mensaje: «Felipe dice que sos una vergüenza para la familia».`)); }
-  c.append(el("button", {class:"btn" + (S.p.mandarPuntaje ? " pri" : ""), onclick:async () => { S.p.mandarPuntaje = false; guardar(); compartirLink(await linkLiga(), `Mi puntaje en Trilingua esta semana: ⚡ ${xpSemana()}. Abrí el link y sumate a mi liga:`); }},
-    S.p.mandarPuntaje ? "📤 Mandales tu puntaje" : "📤 Invitar / mandar mi puntaje"));
+  c.append(el("button", {class:"btn" + (S.p.mandarPuntaje || filas.length === 1 ? " pri" : ""), onclick:async () => { S.p.mandarPuntaje = false; guardar();
+    compartirLink(await linkLiga(), `Estoy aprendiendo idiomas en Trilingua: llevo ⚡ ${yo.t} puntos${yo.v ? " y voy por el " + yo.v : ""}. Abrí el link para sumarte a mi liga y mandame el tuyo:`); }},
+    S.p.mandarPuntaje ? "📤 Mandales tu puntaje" : "📤 Invitar amigos / mandar mi puntaje"));
+  const caja = el("input", {class:"nombre-in", type:"text", placeholder:"Pegá acá el link que te mandaron", "aria-label":"Link de un amigo"});
+  c.append(el("h3", {style:"margin-top:6px"}, "➕ Agregar amigo"),
+    el("div", {class:"small muted"}, "1. Tocá «Invitar» y mandale tu link por WhatsApp.  2. Tu amigo abre el link y te manda el suyo.  3. Abrí su link o pegalo acá. Cada vez que se manden el link, los puntos se actualizan (y también los del resto del grupo)."),
+    el("div", {class:"row", style:"flex-wrap:wrap"}, caja, el("button", {class:"btn", onclick:async () => { if (await procesarLink(caja.value)) render(); }}, "Agregar")));
+  if (instalada()) c.append(el("div", {class:"small muted"}, "Si el link se te abre en el navegador en vez de en la app, mantenelo apretado, copialo y pegalo acá."));
   return c;
 }
 function tarjetaPase(){
@@ -3628,7 +3688,7 @@ function correrPasos(u, l, pasos){
     const precision = total ? Math.round(bien / total * 100) : 100;
     sumarMinutos(inicio);
     if (u.tipo === "practica") {
-      const xpP = 5 + bien * 2; sumarXp(xpP); tono("fin"); st.classList.add("celebrate");
+      const xpP = xpJusto(5 + bien * 2, u.lvl, "practica"); sumarXp(xpP); tono("fin"); st.classList.add("celebrate");
       st.append(titoEl(120, "contento", "happy"), el("h1", {}, u.ic + " " + u.t + " ✓"),
         el("div", {class:"bubble", style:"text-align:left"}, `${bien} de ${total} bien (${precision}%). +${xpP} ⚡ ` + conNombre(azar(FELIPE.fin), .5)),
         el("button", {class:"btn pri big", onclick:() => irA("practica")}, "Continuar"));
@@ -3640,17 +3700,18 @@ function correrPasos(u, l, pasos){
         const lv = u.lvl || "A1", previo = certDe(l);
         if (!previo || NIVELES.indexOf(lv) > NIVELES.indexOf(previo)) S.p.cert = {...(S.p.cert || {}), [l]:lv};
         S.p.certPct = {...(S.p.certPct || {}), [l]:precision};
+        const xpE = xpJusto(100, lv, hecha(l, u.id) ? "repite" : "nueva");
         S.p.hechas[l][u.id] = true;
-        sumarXp(100); tono("fin"); confeti();
+        sumarXp(xpE); tono("fin"); confeti();
         st.append(titoEl(130, "contento", "happy"),
           el("div", {class:"cert"}, el("div", {class:"eyebrow"}, "Certificado Felipe"), el("h1", {}, `🎓 ${u.lvl || "A1"} aprobado`),
             el("div", {style:"font-weight:800;font-size:18px"}, CURSO[l].nombre + " · " + precision + "% de aciertos"),
             el("div", {class:"muted small"}, new Date().toLocaleDateString("es-AR", {day:"numeric", month:"long", year:"numeric"}))),
-          el("div", {class:"bubble", style:"text-align:left"}, (TEXTO_CERT[u.lvl || "A1"] || TEXTO_CERT.A1) + " +100 ⚡"),
+          el("div", {class:"bubble", style:"text-align:left"}, (TEXTO_CERT[u.lvl || "A1"] || TEXTO_CERT.A1) + ` +${xpE} ⚡`),
           el("button", {class:"btn big", onclick:() => compartirCertificado(l, lv, precision)}, "📤 Compartir certificado"),
           el("button", {class:"btn pri big", onclick:() => irA("camino")}, "Continuar"));
       } else {
-        sumarXp(10); tono("no");
+        sumarXp(xpJusto(10, u.lvl, "practica")); tono("no");
         st.append(titoEl(120, "triste", "sad"), el("h1", {}, precision + "%. Desaprobado."),
           el("div", {class:"bubble", style:"text-align:left"}, `Necesitabas 80%. Repasá las unidades que te costaron y volvé. Yo te espero acá, fumando y juzgándote en silencio.${errores.length ? " Para repasar: " + [...new Set(errores.filter(Boolean))].slice(0, 5).join(" · ") + "." : ""}`),
           el("button", {class:"btn pri big", onclick:() => abrirUnidad(u)}, "Intentar de nuevo"),
@@ -3658,8 +3719,8 @@ function correrPasos(u, l, pasos){
       }
       return;
     }
-    const xp = 15 + bien * 2 + (precision === 100 ? 10 : 0);
     const nueva = !hecha(l, u.id);
+    const xp = xpJusto(15 + bien * 2 + (precision === 100 ? 10 : 0), u.lvl, nueva ? "nueva" : "repite");
     S.p.hechas[l][u.id] = true;
     if (precision === 100) S.p.perfectas = (S.p.perfectas || 0) + 1;
     if (u.v) alMazo(l, u);
@@ -3673,7 +3734,7 @@ function correrPasos(u, l, pasos){
         el("div", {class:"stat3", style:"--c:var(--brand)"}, el("div", {class:"h"}, "Racha"), el("b", {}, "🔥 " + racha()))),
       el("div", {class:"bubble", style:"text-align:left"}, u.v
         ? (precision === 100 ? conNombre(FELIPE.perfecta, 1) + " " : conNombre(azar(FELIPE.fin), .7) + " ")
-          + (nueva ? `Sumaste ${u.v.length} palabras a tu repaso: mañana te las pregunto, no te hagas el distraído. ` : "")
+          + (nueva ? `Sumaste ${u.v.length} palabras a tu repaso: mañana te las pregunto, no te hagas el distraído. ` : "Repetir una unidad da menos puntos: los grandes están en las nuevas. ")
           + (errores.length ? `Para reforzar: ${[...new Set(errores.filter(Boolean))].slice(0, 4).join(" · ")}.` : "No tuviste ni un error. 👏")
         : "¡Ya tenés el oído entrenado! Volvé a esta unidad cuando quieras refrescar los sonidos."),
       el("button", {class:"btn pri big", onclick:() => irA("camino")}, "Continuar"));
@@ -3800,7 +3861,7 @@ function releer(u){
     lista.append(el("div", {class:"line" + (q === "B" ? " me" : "")}, el("div", {class:"who"}, q === "B" ? CURSO[S.lang].gente[1] : CURSO[S.lang].gente[0]),
       el("div", {class:"txt", onclick:() => { esp.classList.toggle("hide"); decir(t, S.lang, false, q); }}, el("b", {}, t), esp))); });
   v.append(el("div", {class:"stage"}, el("div", {class:"tip"}, "Leé en voz alta cada frase antes de tocarla. Si la entendés sin traducción, ¡ya es tuya!"), lista,
-    el("button", {class:"btn pri big", onclick:() => { sumarXp(5); irA("practica"); }}, "Terminé · +5 ⚡")));
+    el("button", {class:"btn pri big", onclick:() => { sumarXp(xpJusto(5, u.lvl, "repite")); irA("practica"); }}, "Terminé ✓")));
 }
 
 /* =========================================================================
@@ -3848,7 +3909,7 @@ function vistaPerfil(v){
     el("p", {class:"small muted", style:"margin:8px 0 0"}, "Referencia realista: el Foreign Service Institute estima unas 750 horas de clase intensiva para dominar el alemán. Con 20 minutos por día, en 2 o 3 meses podés tener tus primeras conversaciones básicas.")));
   const confirmar = el("div", {class:"hide", style:"display:flex;flex-direction:column;gap:8px"},
     el("div", {class:"small"}, "Se borra todo: racha, puntos, unidades y repaso. No se puede deshacer."),
-    el("div", {class:"row"}, el("button", {class:"btn bad", onclick:() => { S.p = {xp:0, hoy:"", xpHoy:0, racha:0, ultimo:"", meta:50, dias:{}, hechas:{en:{}, de:{}, la:{}}, sonido:true, perfectas:0}; S.srs = {en:{}, de:{}, la:{}}; guardar(); toast("Progreso borrado"); irA("camino"); }}, "Sí, borrar todo"),
+    el("div", {class:"row"}, el("button", {class:"btn bad", onclick:() => { S.p = {xp:0, hoy:"", xpHoy:0, racha:0, ultimo:"", meta:50, dias:{}, hechas:{en:{}, de:{}, la:{}}, sonido:true, perfectas:0, miId:S.p.miId, amigos:S.p.amigos, bloq:S.p.bloq}; S.srs = {en:{}, de:{}, la:{}}; guardar(); toast("Progreso borrado"); irA("camino"); }}, "Sí, borrar todo"),
       el("button", {class:"btn", onclick:() => confirmar.classList.add("hide")}, "Cancelar")));
   v.append(el("div", {class:"card"}, el("button", {class:"btn link", onclick:() => confirmar.classList.remove("hide")}, "Empezar de cero…"), confirmar));
 }
@@ -3905,7 +3966,7 @@ guardarEstadoAviso();
 setTimeout(() => { if (toqueElegido() !== "ninguno") { const t = "tap:" + toqueElegido(); poolTono[t] || (poolTono[t] = Array.from({length:3}, () => { const a = new Audio(urlTono(t)); a.preload = "auto"; a.load(); return a; })); } for (const tipo of ["ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260927175820";
+const VERSION_APP = "20260928115757";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));
