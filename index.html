@@ -9,8 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Trilingua">
-<link rel="apple-touch-icon" href="icon-192.png">
-<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png?v=2">
+<link rel="icon" type="image/png" href="icon-192.png?v=2">
 <title>Trilingua</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -48,6 +48,15 @@ header.top{position:sticky;top:0;padding-top:calc(10px + env(safe-area-inset-top
 .lvlhead{text-align:center;padding:14px 16px;border-radius:18px;border:2px dashed var(--line);background:rgba(30,26,52,.6);width:100%;max-width:360px}
 .lvlhead b{font-family:var(--f-display);font-size:22px;display:block}
 .flags{display:flex;gap:6px}
+/* Logo de ZafiroWeb en la barra de arriba (se achica en pantallas angostas) */
+.top .zw{flex:0 1 112px;width:112px;min-width:0;height:auto;margin-left:10px;padding-left:10px;border-left:1px solid rgba(255,255,255,.15)}
+.top .zwc{display:none;flex:none;height:24px;width:auto;margin-left:4px}
+@media (max-width:400px){.top .zw{display:none}.top .zwc{display:block}}  /* celular angosto: solo el escudo */
+/* Intro al abrir la app: logo de ZafiroWeb y después la app */
+#intro{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:radial-gradient(60% 40% at 50% 46%,#2A1E0B 0%,transparent 70%),var(--bg);transition:opacity .5s ease}
+#intro img{width:min(72vw,340px);height:auto;opacity:0;transform:scale(.9);animation:introLogo 1s .15s cubic-bezier(.2,.8,.2,1) forwards}
+#intro.fuera{opacity:0;pointer-events:none}
+@keyframes introLogo{to{opacity:1;transform:none}}
 .flagbtn{border:3px solid transparent;background:none;padding:2px;border-radius:12px;line-height:0;transition:transform .15s}
 .flagbtn svg{width:40px;height:28px;border-radius:7px;display:block;box-shadow:0 2px 0 rgba(0,0,0,.15)}
 .flagbtn[aria-pressed="true"]{border-color:var(--lc)}
@@ -368,13 +377,21 @@ select{width:100%;background:var(--surface);border:2px solid var(--line);border-
 .hide{display:none!important}
 #toast{position:fixed;left:50%;transform:translateX(-50%);top:calc(12px + env(safe-area-inset-top,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:14px;font-weight:800;font-size:14px;z-index:30;max-width:90vw;text-align:center}
 #confetti{position:fixed;inset:0;pointer-events:none;z-index:40}
-@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}#intro img{opacity:1;transform:none}}
 </style>
 
+<div id="intro" aria-hidden="true"><img src="zafiroweb-intro.webp" alt="" onerror="this.parentNode.remove()"></div>
+<script>
+// Intro: el logo de ZafiroWeb queda ~1,8 s (un toque la saltea) y se desvanece hacia la app, que carga por detrás.
+(() => { const i = document.getElementById("intro"); if (!i) return; let ido = false;
+  const irse = () => { if (ido) return; ido = true; i.classList.add("fuera"); setTimeout(() => i.remove(), 550); };
+  i.onclick = irse; setTimeout(irse, 1800); })();
+</script>
 <canvas id="stars" aria-hidden="true"></canvas>
 <div class="app" id="app">
   <header class="top" id="topbar">
     <div class="flags" id="flags" role="group" aria-label="Idioma"></div>
+    <img class="zw" src="zafiroweb.png" alt="ZafiroWeb" onerror="this.remove()"><img class="zwc" src="zafiroweb-escudo.png" alt="ZafiroWeb" onerror="this.remove()">
     <div class="pills">
       <button class="pill descargar" id="btnDescargar" type="button" hidden aria-label="Instalar la app"><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3.5v11.5m0 0-4.6-4.6M12 15l4.6-4.6M5 19.5h14" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>Instalar</button>
       <span class="pill fire" title="Días seguidos">🔥 <span id="pRacha">0</span></span>
@@ -3966,7 +3983,7 @@ guardarEstadoAviso();
 setTimeout(() => { if (toqueElegido() !== "ninguno") { const t = "tap:" + toqueElegido(); poolTono[t] || (poolTono[t] = Array.from({length:3}, () => { const a = new Audio(urlTono(t)); a.preload = "auto"; a.load(); return a; })); } for (const tipo of ["ok", "no", "fin"]) poolTono[tipo] || (poolTono[tipo] = Array.from({length:3}, () => { const a = new Audio(urlTono(tipo)); a.preload = "auto"; a.load(); return a; })); }, 1500);
 </script>
 <script>
-const VERSION_APP = "20260928115757";
+const VERSION_APP = "20260928141347";
 if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").then(reg => {
   document.addEventListener("visibilitychange", () => { if (!document.hidden) reg.update().catch(() => {}); });
 }).catch(() => {}));

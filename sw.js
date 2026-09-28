@@ -1,7 +1,8 @@
-const CACHE = "trilingua-20260928115757";
+const CACHE = "trilingua-20260928141347";
 const AUDIO = "trilingua-audio", FUENTES = "trilingua-fuentes";
-const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "sonidos/cristal.wav", "sonidos/gota.wav", "sonidos/interruptor.wav", "sonidos/pop.wav", "sonidos/pop2.wav", "sonidos/seleccion.wav"];
-self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE))); self.skipWaiting(); });
+const BASE = ["./", "index.html", "manifest.webmanifest", "icon-192.png?v=2", "icon-512.png?v=2", "icon-512-maskable.png?v=2", "zafiroweb.png", "zafiroweb-escudo.png", "zafiroweb-intro.webp", "sonidos/cristal.wav", "sonidos/gota.wav", "sonidos/interruptor.wav", "sonidos/pop.wav", "sonidos/pop2.wav", "sonidos/seleccion.wav"];
+// cache: "reload" = bajar todo de internet al instalar una versión nueva (GitHub guarda copias 10 min en el navegador)
+self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE.map(u => new Request(u, {cache: "reload"}))))); self.skipWaiting(); });
 self.addEventListener("activate", e => {
   // Los audios y las fuentes se conservan entre versiones (no cambian); solo se renueva el cache de la página.
   e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE && k !== AUDIO && k !== FUENTES && k !== "trilingua-estado").map(k => caches.delete(k)))));
@@ -31,7 +32,8 @@ async function audio(pedido){
 // La página: primero internet (para recibir actualizaciones), pero si tarda más de 3 s o no hay conexión, la copia guardada.
 async function pagina(pedido){
   const c = await caches.open(CACHE);
-  const red = fetch(pedido).then(res => { if (res.ok) c.put("index.html", res.clone()); return res; });
+  // no-cache: siempre pregunta a internet si hay versión nueva (sin esto, el navegador reusa la página vieja hasta 10 min)
+  const red = fetch(new Request(pedido.url, {cache: "no-cache", credentials: "same-origin"})).then(res => { if (res.ok) c.put("index.html", res.clone()); return res; });
   const guardada = await c.match("index.html");
   if (!guardada) return red;
   const tiempo = new Promise(ok => setTimeout(() => ok(null), 3000));
